@@ -1,6 +1,6 @@
 # ⚡ WinTotal
 
-**An ultra-lightweight all-in-one Windows system utility — a single ~110 KB executable with zero dependencies.**
+**An ultra-lightweight all-in-one Windows system utility — a single ~125 KB executable with zero dependencies.**
 
 No installer. No frameworks to download. No background services. Just one file.
 
@@ -41,6 +41,18 @@ A compact strip at the top of the dashboard — runs automatically on startup an
 
 ![Health Check](docs/health.png)
 *Click the strip to expand the full green / yellow / red report.*
+
+### 🔧 Quick Fixes
+One-click repairs for the things people usually have to google terminal commands for —
+each fix streams its console output into a built-in dark panel:
+
+- **Fix Internet** — flush DNS, reset Winsock/IP stack
+- **Free Disk Space** — clear user + Windows temp files, empty the Recycle Bin
+- **Repair System Files** — `sfc /scannow` with live progress
+- **Restart Explorer** — un-freeze the taskbar/desktop
+- Plus an **Open Terminal** button for power users
+
+![Quick Fixes](docs/fixes.png)
 
 ### 📦 App Manager
 - Desktop apps (64/32-bit registry + per-user) and Microsoft Store apps in one list

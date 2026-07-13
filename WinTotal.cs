@@ -42,6 +42,7 @@ namespace WinTotal
                 {
                     if (arg.StartsWith("--apps")) page = 1;
                     else if (arg == "--specs") page = 2;
+                    else if (arg == "--fix") page = 3;
                     else if (arg == "--demo") DemoMode = true;
                     else if (arg == "--ko") lang = "ko";
                     else if (arg == "--en") lang = "en";
@@ -124,7 +125,7 @@ namespace WinTotal
             { "Dashboard", "대시보드" },
             { "System Specs", "시스템 사양" },
             { "Apps", "앱 관리" },
-            { "v1.3 · single executable", "v1.3 · 단일 실행 파일" },
+            { "v1.4 · single executable", "v1.4 · 단일 실행 파일" },
             { "Real-time System Monitor", "실시간 시스템 모니터" },
             { "Collecting system info...", "시스템 정보 수집 중..." },
             { "Memory", "메모리" },
@@ -271,7 +272,27 @@ namespace WinTotal
             { "Close the running processes of \"{0}\"?\n\nA close request is sent first so the app can save; you will be asked again before any force kill.", "\"{0}\"의 실행 중인 프로세스를 종료할까요?\n\n먼저 닫기 요청을 보내 저장할 기회를 주고, 강제 종료 전에 다시 확인합니다." },
             { "Closing processes of \"{0}\"...", "\"{0}\" 프로세스 종료 중..." },
             { "{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost.", "\"{1}\"의 프로세스 {0}개가 아직 실행 중입니다.\n강제 종료할까요? 저장하지 않은 데이터는 사라질 수 있습니다." },
-            { "Processes of \"{0}\" closed.", "\"{0}\" 프로세스를 종료했습니다." }
+            { "Processes of \"{0}\" closed.", "\"{0}\" 프로세스를 종료했습니다." },
+            { "Quick Fixes", "빠른 수리" },
+            { "One-click repairs for common Windows problems", "자주 겪는 윈도우 문제를 클릭 한 번으로 수리합니다" },
+            { "Open Terminal", "터미널 열기" },
+            { "Fix Internet", "인터넷 수리" },
+            { "Flush DNS and reset the network stack (Winsock/IP). A reboot is recommended afterwards.", "DNS 캐시를 비우고 네트워크 스택(Winsock/IP)을 초기화합니다. 완료 후 재부팅을 권장합니다." },
+            { "Free Disk Space", "디스크 공간 확보" },
+            { "Delete temp files (user + Windows) and empty the Recycle Bin.", "임시 파일(사용자·Windows)을 삭제하고 휴지통을 비웁니다." },
+            { "Repair System Files", "시스템 파일 복구" },
+            { "Run sfc /scannow to find and fix corrupted system files. Can take 10+ minutes.", "sfc /scannow로 손상된 시스템 파일을 검사·복구합니다. 10분 이상 걸릴 수 있습니다." },
+            { "Restart Explorer", "탐색기 재시작" },
+            { "Restart the taskbar/desktop when they freeze or misbehave.", "작업표시줄·바탕화면이 멈추거나 이상할 때 재시작합니다." },
+            { "Run", "실행" },
+            { "Run \"{0}\"?\n\n{1}", "\"{0}\"을(를) 실행할까요?\n\n{1}" },
+            { "Another fix is already running.", "다른 수리 작업이 실행 중입니다." },
+            { "A reboot is recommended.", "재부팅을 권장합니다." },
+            { "Recycle Bin emptied", "휴지통 비움" },
+            { "Freed {0:F0} MB", "{0:F0} MB 확보" },
+            { "Explorer restarted", "탐색기 재시작됨" },
+            { "Done.", "완료." },
+            { "Output will appear here.", "실행 결과가 여기에 표시됩니다." }
         };
 
         public static string T(string s)
@@ -669,6 +690,8 @@ namespace WinTotal
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
         [DllImport("kernel32.dll")]
         private static extern ulong GetTickCount64();
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHEmptyRecycleBin(IntPtr hwnd, string root, uint flags);
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern bool GlobalMemoryStatusEx([In, Out] MemStatusEx buf);
 
@@ -736,6 +759,12 @@ namespace WinTotal
         private ScrollViewer _healthDetailScroll;
         private List<HealthSection> _healthResults;
         private bool _healthRunning, _healthExpanded;
+
+        // Quick Fixes UI
+        private Grid _fixesPage;
+        private Border _navFixes;
+        private TextBox _fixConsole;
+        private bool _fixRunning;
 
         private static readonly string[] ProtectedKeys = new string[]
         {
@@ -918,7 +947,7 @@ namespace WinTotal
             bottomInfo.Children.Add(langBtn);
             bottomInfo.Children.Add(new TextBlock
             {
-                Text = L.T("v1.3 · single executable"),
+                Text = L.T("v1.4 · single executable"),
                 FontSize = 10.5,
                 Foreground = Ui.Br(Theme.TextLow),
                 Margin = new Thickness(13, 0, 0, 0)
@@ -933,6 +962,8 @@ namespace WinTotal
             _navApps = NavItem("", L.T("Apps"), delegate { ShowPage(1); });
             menu.Children.Add(_navDash);
             menu.Children.Add(_navSpecs);
+            _navFixes = NavItem(((char)0xE90F).ToString(), L.T("Quick Fixes"), delegate { ShowPage(3); });
+            menu.Children.Add(_navFixes);
             menu.Children.Add(_navApps);
             navDock.Children.Add(menu);
 
@@ -945,9 +976,11 @@ namespace WinTotal
             _dashboardPage = BuildDashboardPage();
             _appsPage = BuildAppsPage();
             _specsPage = BuildSpecsPage();
+            _fixesPage = BuildFixesPage();
             content.Children.Add(_dashboardPage);
             content.Children.Add(_appsPage);
             content.Children.Add(_specsPage);
+            content.Children.Add(_fixesPage);
             root.Children.Add(content);
 
             ShowPage(0);
@@ -999,9 +1032,11 @@ namespace WinTotal
             _dashboardPage.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
             _appsPage.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
             _specsPage.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
+            _fixesPage.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
             SetNavActive(_navDash, idx == 0);
             SetNavActive(_navApps, idx == 1);
             SetNavActive(_navSpecs, idx == 2);
+            SetNavActive(_navFixes, idx == 3);
             if (idx == 1 && !_appsLoaded)
             {
                 _appsLoaded = true;
@@ -2758,6 +2793,275 @@ namespace WinTotal
             sections.Add(sy);
 
             return sections;
+        }
+
+        // ================= Quick Fixes =================
+        private Grid BuildFixesPage()
+        {
+            var page = new Grid { Margin = new Thickness(24, 20, 24, 24) };
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var head = new Grid { Margin = new Thickness(8, 0, 8, 14) };
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var headLeft = new StackPanel();
+            headLeft.Children.Add(new TextBlock
+            {
+                Text = L.T("Quick Fixes"),
+                FontSize = 21,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White
+            });
+            headLeft.Children.Add(new TextBlock
+            {
+                Text = L.T("One-click repairs for common Windows problems"),
+                FontSize = 11.5,
+                Foreground = Ui.Br(Theme.TextLow),
+                Margin = new Thickness(1, 5, 0, 0)
+            });
+            Grid.SetColumn(headLeft, 0);
+            head.Children.Add(headLeft);
+
+            var termBtn = PillButton(((char)0xE756).ToString(), L.T("Open Terminal"),
+                Theme.BtnBg, Theme.BtnHover, Theme.BtnText, delegate { OpenTerminal(); });
+            termBtn.VerticalAlignment = VerticalAlignment.Center;
+            termBtn.Margin = new Thickness(16, 0, 0, 0);
+            Grid.SetColumn(termBtn, 1);
+            head.Children.Add(termBtn);
+            Grid.SetRow(head, 0);
+            page.Children.Add(head);
+
+            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(2, 0, 2, 4) };
+            grid.Children.Add(FixCard(0, L.T("Fix Internet"),
+                L.T("Flush DNS and reset the network stack (Winsock/IP). A reboot is recommended afterwards.")));
+            grid.Children.Add(FixCard(1, L.T("Free Disk Space"),
+                L.T("Delete temp files (user + Windows) and empty the Recycle Bin.")));
+            grid.Children.Add(FixCard(2, L.T("Repair System Files"),
+                L.T("Run sfc /scannow to find and fix corrupted system files. Can take 10+ minutes.")));
+            grid.Children.Add(FixCard(3, L.T("Restart Explorer"),
+                L.T("Restart the taskbar/desktop when they freeze or misbehave.")));
+            Grid.SetRow(grid, 1);
+            page.Children.Add(grid);
+
+            var consoleBorder = new Border
+            {
+                Background = Ui.Br("#0A0A0C"),
+                BorderBrush = Ui.Br(Theme.CardBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Margin = new Thickness(8, 8, 8, 0),
+                Padding = new Thickness(4)
+            };
+            _fixConsole = new TextBox
+            {
+                Background = Brushes.Transparent,
+                Foreground = Ui.Br("#B9C2CF"),
+                BorderThickness = new Thickness(0),
+                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontSize = 11.5,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Padding = new Thickness(10, 8, 10, 8),
+                Text = L.T("Output will appear here.")
+            };
+            consoleBorder.Child = _fixConsole;
+            Grid.SetRow(consoleBorder, 2);
+            page.Children.Add(consoleBorder);
+
+            return page;
+        }
+
+        private Border FixCard(int id, string title, string desc)
+        {
+            var card = new Border
+            {
+                Background = Ui.Br(Theme.Card),
+                BorderBrush = Ui.Br(Theme.CardBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(18, 13, 18, 13),
+                Margin = new Thickness(6)
+            };
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var left = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
+            left.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White
+            });
+            left.Children.Add(new TextBlock
+            {
+                Text = desc,
+                FontSize = 11,
+                Foreground = Ui.Br(Theme.TextLow),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            Grid.SetColumn(left, 0);
+            g.Children.Add(left);
+            var localTitle = title;
+            var localDesc = desc;
+            var btn = PillButton(null, L.T("Run"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
+                delegate { RunFix(id, localTitle, localDesc); });
+            btn.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(btn, 1);
+            g.Children.Add(btn);
+            card.Child = g;
+            return card;
+        }
+
+        private void OpenTerminal()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = "wt.exe", UseShellExecute = true });
+            }
+            catch
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo { FileName = "powershell.exe", UseShellExecute = true });
+                }
+                catch { }
+            }
+        }
+
+        private void FixLog(string line)
+        {
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if (_fixConsole == null) return;
+                _fixConsole.AppendText(line + Environment.NewLine);
+                _fixConsole.ScrollToEnd();
+            }));
+        }
+
+        private int RunCmdStep(string file, string args, bool unicodeOut)
+        {
+            FixLog("> " + file + " " + args);
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = file,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                if (unicodeOut) psi.StandardOutputEncoding = Encoding.Unicode;
+                using (var p = Process.Start(psi))
+                {
+                    p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
+                    {
+                        if (!string.IsNullOrEmpty(e.Data) && e.Data.Trim().Length > 0) FixLog("  " + e.Data.Trim());
+                    };
+                    p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
+                    {
+                        if (!string.IsNullOrEmpty(e.Data) && e.Data.Trim().Length > 0) FixLog("  " + e.Data.Trim());
+                    };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    p.WaitForExit();
+                    return p.ExitCode;
+                }
+            }
+            catch (Exception ex)
+            {
+                FixLog("  ERROR: " + ex.Message);
+                return -1;
+            }
+        }
+
+        private double CleanTempDir(string dir)
+        {
+            double freed = 0;
+            try
+            {
+                var di = new DirectoryInfo(dir);
+                if (!di.Exists) return 0;
+                foreach (var fi in di.GetFiles())
+                {
+                    try { double len = fi.Length; fi.Delete(); freed += len; }
+                    catch { }
+                }
+                foreach (var sub in di.GetDirectories())
+                {
+                    try { sub.Delete(true); }
+                    catch { }
+                }
+                FixLog(string.Format("  {0} — {1:F0} MB", dir, freed / 1048576.0));
+            }
+            catch { }
+            return freed;
+        }
+
+        private void RunFix(int id, string title, string desc)
+        {
+            if (_fixRunning)
+            {
+                MessageBox.Show(this, L.T("Another fix is already running."), "WinTotal",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (MessageBox.Show(this, string.Format(L.T("Run \"{0}\"?\n\n{1}"), title, desc),
+                title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            _fixRunning = true;
+            FixLog("");
+            FixLog("═══ " + title + " ═══");
+            Task.Run(delegate
+            {
+                try
+                {
+                    switch (id)
+                    {
+                        case 0: // network
+                            RunCmdStep("ipconfig", "/flushdns", false);
+                            RunCmdStep("netsh", "winsock reset", false);
+                            RunCmdStep("netsh", "int ip reset", false);
+                            FixLog(L.T("A reboot is recommended."));
+                            break;
+                        case 1: // disk space
+                            double freed = 0;
+                            freed += CleanTempDir(System.IO.Path.GetTempPath());
+                            freed += CleanTempDir(System.IO.Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp"));
+                            try
+                            {
+                                SHEmptyRecycleBin(IntPtr.Zero, null, 0x7); // no confirm/progress/sound
+                                FixLog("  " + L.T("Recycle Bin emptied"));
+                            }
+                            catch { }
+                            FixLog(string.Format(L.T("Freed {0:F0} MB"), freed / 1048576.0));
+                            break;
+                        case 2: // sfc
+                            RunCmdStep("sfc", "/scannow", true);
+                            break;
+                        case 3: // explorer
+                            RunCmdStep("taskkill", "/f /im explorer.exe", false);
+                            System.Threading.Thread.Sleep(800);
+                            try { Process.Start(new ProcessStartInfo { FileName = "explorer.exe", UseShellExecute = true }); }
+                            catch { }
+                            FixLog("  " + L.T("Explorer restarted"));
+                            break;
+                    }
+                    FixLog(L.T("Done."));
+                }
+                catch (Exception ex)
+                {
+                    FixLog("  ERROR: " + ex.Message);
+                }
+                _fixRunning = false;
+            });
         }
 
         // ================= Apps =================
