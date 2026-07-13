@@ -42,6 +42,7 @@ namespace WinTotal
                 {
                     if (arg.StartsWith("--apps")) page = 1;
                     else if (arg == "--specs") page = 2;
+                    else if (arg == "--health") page = 3;
                     else if (arg == "--demo") DemoMode = true;
                     else if (arg == "--ko") lang = "ko";
                     else if (arg == "--en") lang = "en";
@@ -124,7 +125,7 @@ namespace WinTotal
             { "Dashboard", "대시보드" },
             { "System Specs", "시스템 사양" },
             { "Apps", "앱 관리" },
-            { "v1.2 · single executable", "v1.2 · 단일 실행 파일" },
+            { "v1.3 · single executable", "v1.3 · 단일 실행 파일" },
             { "Real-time System Monitor", "실시간 시스템 모니터" },
             { "Collecting system info...", "시스템 정보 수집 중..." },
             { "Memory", "메모리" },
@@ -230,7 +231,42 @@ namespace WinTotal
             { "Media & Creative", "미디어·창작" },
             { "Utilities", "유틸리티" },
             { "System Components", "시스템 구성요소" },
-            { "Other", "기타" }
+            { "Other", "기타" },
+            { "Top GPU processes", "GPU를 많이 쓰는 프로세스" },
+            { "No active GPU processes", "GPU 사용 중인 프로세스 없음" },
+            { "Health Check", "상태 진단" },
+            { "Run Check", "진단 실행" },
+            { "Checking...", "진단 중..." },
+            { "One-click hardware health diagnosis", "클릭 한 번으로 하드웨어 상태를 진단합니다" },
+            { "Check failed — press Run Check to retry", "진단 실패 — 진단 실행을 눌러 다시 시도하세요" },
+            { "Last check {0} · took {1:F1}s · {2} items", "마지막 진단 {0} · {1:F1}초 소요 · {2}개 항목" },
+            { "{0} OK · {1} warning · {2} critical · {3} unknown", "정상 {0} · 주의 {1} · 위험 {2} · 확인 불가 {3}" },
+            { "Healthy", "정상" },
+            { "Warning", "주의" },
+            { "Critical", "위험" },
+            { "Unknown", "확인 불가" },
+            { "SMART status: ", "SMART 상태: " },
+            { "SSD wear", "SSD 마모도" },
+            { "{0:F0}% worn", "{0:F0}% 마모" },
+            { "Disk temperature", "디스크 온도" },
+            { "free space", "여유 공간" },
+            { "{0:F0} GB free ({1:F0}%)", "{0:F0} GB 여유 ({1:F0}%)" },
+            { "GPU temperature", "GPU 온도" },
+            { "GPU throttling", "GPU 스로틀링" },
+            { "Thermal/power slowdown active", "온도/전력 스로틀링 발생 중" },
+            { "Not throttling", "스로틀링 없음" },
+            { "VRAM headroom", "VRAM 여유" },
+            { "Power draw", "전력 사용" },
+            { "nvidia-smi not available", "nvidia-smi를 사용할 수 없음" },
+            { "Memory pressure", "메모리 압박" },
+            { "{0}% in use ({1:F1} / {2:F1} GB)", "{0}% 사용 중 ({1:F1} / {2:F1} GB)" },
+            { "Commit charge", "커밋 사용량" },
+            { "Uptime", "가동 시간" },
+            { "{0:F0} days without a reboot — consider restarting", "{0:F0}일째 재부팅 없음 — 재시작 권장" },
+            { "{0:F1} days", "{0:F1}일" },
+            { "Thermal zone", "온도 센서" },
+            { "CPU temperature", "CPU 온도" },
+            { "Not supported on this system", "이 시스템에서는 지원되지 않음" }
         };
 
         public static string T(string s)
@@ -348,6 +384,7 @@ namespace WinTotal
         private List<PerformanceCounter> _counters = new List<PerformanceCounter>();
         private DateTime _lastRebuild = DateTime.MinValue;
         public bool Available = true;
+        public Dictionary<int, float> PidUsage = new Dictionary<int, float>(); // per-process GPU %
 
         public float Read()
         {
@@ -356,6 +393,7 @@ namespace WinTotal
             {
                 if ((DateTime.Now - _lastRebuild).TotalSeconds > 15) Rebuild();
                 var byType = new Dictionary<string, float>();
+                var byPidType = new Dictionary<int, Dictionary<string, float>>();
                 foreach (var c in _counters)
                 {
                     float v;
@@ -366,7 +404,30 @@ namespace WinTotal
                     string t = idx >= 0 ? inst.Substring(idx) : "other";
                     if (!byType.ContainsKey(t)) byType[t] = 0;
                     byType[t] += v;
+
+                    int pid = GpuMemMonitor.ParsePid(inst);
+                    if (pid > 0 && v > 0)
+                    {
+                        Dictionary<string, float> slot;
+                        if (!byPidType.TryGetValue(pid, out slot))
+                        {
+                            slot = new Dictionary<string, float>();
+                            byPidType[pid] = slot;
+                        }
+                        float cur;
+                        slot.TryGetValue(t, out cur);
+                        slot[t] = cur + v;
+                    }
                 }
+                var pidUsage = new Dictionary<int, float>();
+                foreach (var kv in byPidType)
+                {
+                    float m = 0;
+                    foreach (var tv in kv.Value) if (tv.Value > m) m = tv.Value;
+                    pidUsage[kv.Key] = Math.Min(100f, m);
+                }
+                PidUsage = pidUsage;
+
                 float max = 0;
                 foreach (var kv in byType) if (kv.Value > max) max = kv.Value;
                 return Math.Min(100f, max);
@@ -397,12 +458,185 @@ namespace WinTotal
         }
     }
 
+    // ---------- GPU memory (adapter total + per-process dedicated VRAM) ----------
+    public class GpuMemMonitor
+    {
+        private List<PerformanceCounter> _adapter = new List<PerformanceCounter>();
+        private List<PerformanceCounter> _process = new List<PerformanceCounter>();
+        private DateTime _lastRebuild = DateTime.MinValue;
+        public bool Available = true;
+        public double TotalUsedBytes;
+        public Dictionary<int, double> PidBytes = new Dictionary<int, double>();
+
+        public void Read()
+        {
+            if (!Available) return;
+            try
+            {
+                if ((DateTime.Now - _lastRebuild).TotalSeconds > 15) Rebuild();
+                double total = 0;
+                foreach (var c in _adapter)
+                {
+                    try { total += c.NextValue(); } catch { }
+                }
+                TotalUsedBytes = total;
+                var pids = new Dictionary<int, double>();
+                foreach (var c in _process)
+                {
+                    float v;
+                    try { v = c.NextValue(); } catch { continue; }
+                    int pid = ParsePid(c.InstanceName);
+                    if (pid <= 0) continue;
+                    double cur;
+                    pids.TryGetValue(pid, out cur);
+                    pids[pid] = cur + v;
+                }
+                PidBytes = pids;
+            }
+            catch { Available = false; }
+        }
+
+        // "pid_12345_luid_..." → 12345
+        public static int ParsePid(string inst)
+        {
+            if (inst == null || !inst.StartsWith("pid_")) return -1;
+            int end = inst.IndexOf('_', 4);
+            if (end < 0) return -1;
+            int pid;
+            return int.TryParse(inst.Substring(4, end - 4), out pid) ? pid : -1;
+        }
+
+        private void Rebuild()
+        {
+            foreach (var c in _adapter) { try { c.Dispose(); } catch { } }
+            foreach (var c in _process) { try { c.Dispose(); } catch { } }
+            _adapter = new List<PerformanceCounter>();
+            _process = new List<PerformanceCounter>();
+            try
+            {
+                var cat = new PerformanceCounterCategory("GPU Adapter Memory");
+                foreach (var inst in cat.GetInstanceNames())
+                {
+                    try
+                    {
+                        var pc = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", inst);
+                        pc.NextValue();
+                        _adapter.Add(pc);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            try
+            {
+                var cat2 = new PerformanceCounterCategory("GPU Process Memory");
+                foreach (var inst in cat2.GetInstanceNames())
+                {
+                    try
+                    {
+                        var pc = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", inst);
+                        pc.NextValue();
+                        _process.Add(pc);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            _lastRebuild = DateTime.Now;
+        }
+    }
+
+    // ---------- nvidia-smi polling (temperature / power / clocks / VRAM / throttling) ----------
+    public class NvSmi
+    {
+        public bool Available = true;
+        public volatile bool HasData;
+        public float TempC, PowerW, PowerLimitW, ClockMhz, MemUsedMB, MemTotalMB;
+        public string DriverVer = "", GpuName = "", ThrottleHex = "";
+        private string _exe;
+
+        private string FindExe()
+        {
+            var candidates = new string[]
+            {
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "nvidia-smi.exe"),
+                @"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+            };
+            foreach (var cand in candidates)
+            {
+                try { if (File.Exists(cand)) return cand; }
+                catch { }
+            }
+            return null;
+        }
+
+        public void Refresh()
+        {
+            if (!Available) return;
+            try
+            {
+                if (_exe == null)
+                {
+                    _exe = FindExe();
+                    if (_exe == null) { Available = false; return; }
+                }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = _exe,
+                    Arguments = "--query-gpu=temperature.gpu,power.draw,power.limit,clocks.sm,memory.used,memory.total,driver_version,name,clocks_throttle_reasons.active --format=csv,noheader,nounits",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                string line;
+                using (var p = Process.Start(psi))
+                {
+                    line = p.StandardOutput.ReadLine();
+                    p.WaitForExit(5000);
+                }
+                if (string.IsNullOrEmpty(line)) { Available = false; return; }
+                var parts = line.Split(',');
+                if (parts.Length < 9) return;
+                TempC = ParseF(parts[0]);
+                PowerW = ParseF(parts[1]);
+                PowerLimitW = ParseF(parts[2]);
+                ClockMhz = ParseF(parts[3]);
+                MemUsedMB = ParseF(parts[4]);
+                MemTotalMB = ParseF(parts[5]);
+                DriverVer = parts[6].Trim();
+                GpuName = parts[7].Trim();
+                ThrottleHex = parts[8].Trim();
+                HasData = true;
+            }
+            catch { Available = false; }
+        }
+
+        private static float ParseF(string s)
+        {
+            float v;
+            return float.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out v) ? v : -1;
+        }
+    }
     // ---------- Spec section ----------
     public class SpecSection
     {
         public string Title;
         public string Accent;
         public List<string[]> Rows = new List<string[]>();
+    }
+
+    // ---------- Health check items ----------
+    public class HealthItem
+    {
+        public string Name;
+        public string Detail;
+        public int Level; // 0 ok · 1 warning · 2 critical · 3 unknown
+    }
+
+    public class HealthSection
+    {
+        public string Title;
+        public List<HealthItem> Items = new List<HealthItem>();
     }
 
     // ---------- App entry ----------
@@ -450,6 +684,9 @@ namespace WinTotal
         private PerformanceCounter _cpu;
         private PerformanceCounter _disk;
         private GpuMonitor _gpu = new GpuMonitor();
+        private GpuMemMonitor _gpuMem = new GpuMemMonitor();
+        private NvSmi _nv = new NvSmi();
+        private bool _nvBusy;
         private DispatcherTimer _timer;
         private int _tickCount;
 
@@ -460,7 +697,7 @@ namespace WinTotal
         private string _infoLine, _gpuName;
 
         // top-process tracking
-        private StackPanel _topCpuPanel, _topRamPanel;
+        private StackPanel _topCpuPanel, _topRamPanel, _topGpuPanel;
         private Dictionary<int, double> _prevCpuMs = new Dictionary<int, double>();
         private DateTime _prevProcSample = DateTime.MinValue;
 
@@ -483,6 +720,13 @@ namespace WinTotal
         private TextBlock _specsStatus;
         private bool _specsLoaded;
         private bool _specsScanning;
+
+        // Health check UI
+        private Grid _healthPage;
+        private Border _navHealth;
+        private StackPanel _healthPanel;
+        private TextBlock _healthStatus;
+        private bool _healthLoaded, _healthRunning;
 
         private static readonly string[] ProtectedKeys = new string[]
         {
@@ -665,7 +909,7 @@ namespace WinTotal
             bottomInfo.Children.Add(langBtn);
             bottomInfo.Children.Add(new TextBlock
             {
-                Text = L.T("v1.2 · single executable"),
+                Text = L.T("v1.3 · single executable"),
                 FontSize = 10.5,
                 Foreground = Ui.Br(Theme.TextLow),
                 Margin = new Thickness(13, 0, 0, 0)
@@ -680,6 +924,8 @@ namespace WinTotal
             _navApps = NavItem("", L.T("Apps"), delegate { ShowPage(1); });
             menu.Children.Add(_navDash);
             menu.Children.Add(_navSpecs);
+            _navHealth = NavItem(((char)0xE73E).ToString(), L.T("Health Check"), delegate { ShowPage(3); });
+            menu.Children.Add(_navHealth);
             menu.Children.Add(_navApps);
             navDock.Children.Add(menu);
 
@@ -692,9 +938,11 @@ namespace WinTotal
             _dashboardPage = BuildDashboardPage();
             _appsPage = BuildAppsPage();
             _specsPage = BuildSpecsPage();
+            _healthPage = BuildHealthPage();
             content.Children.Add(_dashboardPage);
             content.Children.Add(_appsPage);
             content.Children.Add(_specsPage);
+            content.Children.Add(_healthPage);
             root.Children.Add(content);
 
             ShowPage(0);
@@ -746,9 +994,11 @@ namespace WinTotal
             _dashboardPage.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
             _appsPage.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
             _specsPage.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
+            _healthPage.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
             SetNavActive(_navDash, idx == 0);
             SetNavActive(_navApps, idx == 1);
             SetNavActive(_navSpecs, idx == 2);
+            SetNavActive(_navHealth, idx == 3);
             if (idx == 1 && !_appsLoaded)
             {
                 _appsLoaded = true;
@@ -758,6 +1008,11 @@ namespace WinTotal
             {
                 _specsLoaded = true;
                 LoadSpecsAsync();
+            }
+            if (idx == 3 && !_healthLoaded)
+            {
+                _healthLoaded = true;
+                RunHealthCheck();
             }
         }
 
@@ -785,6 +1040,8 @@ namespace WinTotal
             _appsLoaded = false;
             _specsLoaded = false;
             _specsScanning = false;
+            _healthLoaded = false;
+            _healthRunning = false;
             _apps = new List<AppEntry>();
             Content = BuildLayout(); // rebuild the whole UI in the new language
         }
@@ -870,11 +1127,14 @@ namespace WinTotal
             };
             var procGrid = new Grid();
             procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+            procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+            procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             _topCpuPanel = MakeTopColumn(procGrid, 0, L.T("Top CPU processes"), Theme.AccCpu);
-            _topRamPanel = MakeTopColumn(procGrid, 2, L.T("Top memory processes"), Theme.AccRam);
+            _topGpuPanel = MakeTopColumn(procGrid, 2, L.T("Top GPU processes"), Theme.AccGpu);
+            _topRamPanel = MakeTopColumn(procGrid, 4, L.T("Top memory processes"), Theme.AccRam);
 
             procCard.Child = procGrid;
             Grid.SetRow(procCard, 2);
@@ -918,10 +1178,10 @@ namespace WinTotal
 
         private UIElement ProcRow(string name, string valueText, double ratio, string accent)
         {
-            var g = new Grid { Margin = new Thickness(15, 0, 0, 6) };
+            var g = new Grid { Margin = new Thickness(15, 0, 0, 6), MinHeight = 16 };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(66) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
 
             var nm = new TextBlock
@@ -1103,6 +1363,7 @@ namespace WinTotal
                 ? 0 : (now - _prevProcSample).TotalMilliseconds;
 
             var cur = new Dictionary<int, double>();
+            var pidName = new Dictionary<int, string>();
             // aggregate by name: [0]=cpu delta ms, [1]=ram bytes
             var agg = new Dictionary<string, double[]>();
             Process[] procs;
@@ -1122,6 +1383,7 @@ namespace WinTotal
                 catch { continue; }
                 finally { try { p.Dispose(); } catch { } }
                 if (ms >= 0) cur[pid] = ms;
+                pidName[pid] = name;
 
                 double delta = 0;
                 double prev;
@@ -1162,6 +1424,52 @@ namespace WinTotal
                     ? string.Format("{0:F1} GB", mb / 1024.0)
                     : string.Format("{0:F0} MB", mb);
                 _topRamPanel.Children.Add(ProcRow(kv.Key, txt, kv.Value[1] / maxRam, Theme.AccRam));
+            }
+
+            // Top GPU processes (usage % from GPU Engine, VRAM from GPU Process Memory)
+            var gpuAgg = new Dictionary<string, double[]>(); // name → [usage %, vram bytes]
+            foreach (var kv in _gpu.PidUsage)
+            {
+                string nm;
+                if (!pidName.TryGetValue(kv.Key, out nm)) continue;
+                double[] slot;
+                if (!gpuAgg.TryGetValue(nm, out slot)) { slot = new double[2]; gpuAgg[nm] = slot; }
+                slot[0] += kv.Value;
+            }
+            foreach (var kv in _gpuMem.PidBytes)
+            {
+                string nm;
+                if (!pidName.TryGetValue(kv.Key, out nm)) continue;
+                double[] slot;
+                if (!gpuAgg.TryGetValue(nm, out slot)) { slot = new double[2]; gpuAgg[nm] = slot; }
+                slot[1] += kv.Value;
+            }
+            var topGpu = gpuAgg.Where(kv => kv.Value[0] >= 0.5 || kv.Value[1] > 64 * 1048576.0)
+                               .OrderByDescending(kv => kv.Value[0])
+                               .ThenByDescending(kv => kv.Value[1])
+                               .Take(5).ToList();
+            _topGpuPanel.Children.Clear();
+            if (topGpu.Count == 0)
+            {
+                _topGpuPanel.Children.Add(new TextBlock
+                {
+                    Text = L.T("No active GPU processes"),
+                    FontSize = 11.5,
+                    Foreground = Ui.Br(Theme.TextLow),
+                    Margin = new Thickness(15, 2, 0, 2)
+                });
+            }
+            else
+            {
+                double maxG = 0.01;
+                foreach (var kv in topGpu) maxG = Math.Max(maxG, kv.Value[0]);
+                foreach (var kv in topGpu)
+                {
+                    string gtxt = kv.Value[1] > 0
+                        ? string.Format("{0:F0}% · {1:F1} GB", kv.Value[0], kv.Value[1] / 1073741824.0)
+                        : string.Format("{0:F0}%", kv.Value[0]);
+                    _topGpuPanel.Children.Add(ProcRow(kv.Key, gtxt, Math.Min(1.0, kv.Value[0] / maxG), Theme.AccGpu));
+                }
             }
         }
 
@@ -1321,7 +1629,6 @@ namespace WinTotal
             if (_tickCount % 5 == 1)
             {
                 if (_infoLine != null) _headerInfo.Text = _infoLine;
-                if (_gpuName != null) _gpuSub.Text = _gpuName;
                 try
                 {
                     var up = TimeSpan.FromMilliseconds(GetTickCount64());
@@ -1335,6 +1642,19 @@ namespace WinTotal
             double gpu = _gpu.Read();
             SetBigValue(_gpuVal, _gpu.Available ? string.Format("{0:F0}", gpu) : "N/A", _gpu.Available ? "%" : "");
             _gpuChart.Push(gpu);
+            _gpuMem.Read();
+            if (_tickCount % 3 == 0 && _nv.Available && !_nvBusy)
+            {
+                _nvBusy = true;
+                Task.Run(delegate { _nv.Refresh(); _nvBusy = false; });
+            }
+            if (_nv.HasData)
+                _gpuSub.Text = string.Format("{0:F0}°C · {1:F0} W · {2:F1} / {3:F1} GB",
+                    _nv.TempC, _nv.PowerW, _nv.MemUsedMB / 1024.0, _nv.MemTotalMB / 1024.0);
+            else if (_gpuMem.Available && _gpuMem.TotalUsedBytes > 0)
+                _gpuSub.Text = string.Format("VRAM {0:F1} GB", _gpuMem.TotalUsedBytes / 1073741824.0);
+            else if (_gpuName != null)
+                _gpuSub.Text = _gpuName;
 
             // RAM
             var mem = new MemStatusEx();
@@ -1939,6 +2259,463 @@ namespace WinTotal
             }
             catch { }
             if (net.Rows.Count > 0) sections.Add(net);
+
+            return sections;
+        }
+
+        // ================= Health Check =================
+        private Grid BuildHealthPage()
+        {
+            var page = new Grid { Margin = new Thickness(24, 20, 24, 24) };
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var head = new Grid { Margin = new Thickness(8, 0, 8, 14) };
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var headLeft = new StackPanel();
+            headLeft.Children.Add(new TextBlock
+            {
+                Text = L.T("Health Check"),
+                FontSize = 21,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White
+            });
+            _healthStatus = new TextBlock
+            {
+                Text = L.T("One-click hardware health diagnosis"),
+                FontSize = 11.5,
+                Foreground = Ui.Br(Theme.TextLow),
+                Margin = new Thickness(1, 5, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            headLeft.Children.Add(_healthStatus);
+            Grid.SetColumn(headLeft, 0);
+            head.Children.Add(headLeft);
+
+            var runBtn = PillButton(((char)0xE73E).ToString(), L.T("Run Check"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
+                delegate { RunHealthCheck(); });
+            runBtn.VerticalAlignment = VerticalAlignment.Center;
+            runBtn.Margin = new Thickness(16, 0, 0, 0);
+            Grid.SetColumn(runBtn, 1);
+            head.Children.Add(runBtn);
+            Grid.SetRow(head, 0);
+            page.Children.Add(head);
+
+            var scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Margin = new Thickness(8, 0, 8, 0)
+            };
+            _healthPanel = new StackPanel();
+            scroll.Content = _healthPanel;
+            Grid.SetRow(scroll, 1);
+            page.Children.Add(scroll);
+            return page;
+        }
+
+        private static string LevelColor(int level)
+        {
+            switch (level)
+            {
+                case 0: return "#30D158";
+                case 1: return "#FFD60A";
+                case 2: return "#FF453A";
+                default: return "#5C5C66";
+            }
+        }
+
+        private void RunHealthCheck()
+        {
+            if (_healthRunning) return;
+            _healthRunning = true;
+            _healthStatus.Text = L.T("Checking...");
+            _healthPanel.Children.Clear();
+            _healthPanel.Children.Add(new TextBlock
+            {
+                Text = L.T("Checking..."),
+                FontSize = 12.5,
+                Foreground = Ui.Br(Theme.TextLow),
+                Margin = new Thickness(4, 10, 0, 0)
+            });
+            var sw = Stopwatch.StartNew();
+            Task.Run<List<HealthSection>>(new Func<List<HealthSection>>(CollectHealth)).ContinueWith(t =>
+            {
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    sw.Stop();
+                    _healthRunning = false;
+                    _healthPanel.Children.Clear();
+                    if (t.IsFaulted || t.Result == null || t.Result.Count == 0)
+                    {
+                        _healthStatus.Text = L.T("Check failed — press Run Check to retry");
+                        return;
+                    }
+                    int okC = 0, warn = 0, bad = 0, unk = 0, total = 0;
+                    foreach (var s in t.Result)
+                        foreach (var it in s.Items)
+                        {
+                            total++;
+                            if (it.Level == 0) okC++;
+                            else if (it.Level == 1) warn++;
+                            else if (it.Level == 2) bad++;
+                            else unk++;
+                        }
+
+                    int overall = bad > 0 ? 2 : (warn > 0 ? 1 : 0);
+                    var banner = new Border
+                    {
+                        Background = Ui.Br(Theme.Card),
+                        BorderBrush = Ui.Br(LevelColor(overall)),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(14),
+                        Padding = new Thickness(20, 14, 20, 14),
+                        Margin = new Thickness(0, 0, 0, 10)
+                    };
+                    var bsp = new StackPanel { Orientation = Orientation.Horizontal };
+                    bsp.Children.Add(new Ellipse
+                    {
+                        Width = 12, Height = 12,
+                        Fill = Ui.Br(LevelColor(overall)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(0, 1, 12, 0)
+                    });
+                    bsp.Children.Add(new TextBlock
+                    {
+                        Text = string.Format(L.T("{0} OK · {1} warning · {2} critical · {3} unknown"), okC, warn, bad, unk),
+                        FontSize = 14,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = Brushes.White,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    banner.Child = bsp;
+                    _healthPanel.Children.Add(banner);
+
+                    foreach (var s in t.Result)
+                        _healthPanel.Children.Add(HealthCard(s));
+
+                    _healthStatus.Text = string.Format(L.T("Last check {0} · took {1:F1}s · {2} items"),
+                        DateTime.Now.ToString("HH:mm:ss"), sw.Elapsed.TotalSeconds, total);
+                }));
+            });
+        }
+
+        private Border HealthCard(HealthSection s)
+        {
+            var card = new Border
+            {
+                Background = Ui.Br(Theme.Card),
+                BorderBrush = Ui.Br(Theme.CardBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 15, 20, 16),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = s.Title,
+                FontSize = 13.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            foreach (var it in s.Items)
+            {
+                var row = new Grid { Margin = new Thickness(4, 0, 0, 8) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var dot = new Ellipse
+                {
+                    Width = 9, Height = 9,
+                    Fill = Ui.Br(LevelColor(it.Level)),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+                Grid.SetColumn(dot, 0);
+                row.Children.Add(dot);
+                var nm = new TextBlock
+                {
+                    Text = it.Name,
+                    FontSize = 12.5,
+                    Foreground = Ui.Br("#C9C9D1"),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 0, 10, 0)
+                };
+                Grid.SetColumn(nm, 1);
+                row.Children.Add(nm);
+                var dt = new TextBlock
+                {
+                    Text = it.Detail,
+                    FontSize = 12.5,
+                    Foreground = Ui.Br(Theme.TextMid),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                Grid.SetColumn(dt, 2);
+                row.Children.Add(dt);
+                stack.Children.Add(row);
+            }
+            card.Child = stack;
+            return card;
+        }
+
+        private List<HealthSection> CollectHealth()
+        {
+            var sections = new List<HealthSection>();
+
+            // --- Storage ---
+            var st = new HealthSection { Title = L.T("Storage") };
+            try
+            {
+                var scope = new ManagementScope(@"\\.\root\Microsoft\Windows\Storage");
+                scope.Connect();
+                using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT FriendlyName, HealthStatus FROM MSFT_PhysicalDisk")))
+                    foreach (ManagementObject mo in s.Get())
+                    {
+                        string name = WmiStr(mo, "FriendlyName");
+                        string hs = WmiStr(mo, "HealthStatus");
+                        int lvl = hs == "0" ? 0 : (hs == "1" ? 1 : (hs == "2" ? 2 : 3));
+                        string verdict = lvl == 0 ? L.T("Healthy") : (lvl == 1 ? L.T("Warning") : (lvl == 2 ? L.T("Critical") : L.T("Unknown")));
+                        st.Items.Add(new HealthItem { Name = name, Detail = L.T("SMART status: ") + verdict, Level = lvl });
+                    }
+                using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Wear, Temperature FROM MSFT_StorageReliabilityCounter")))
+                {
+                    int di = 0;
+                    foreach (ManagementObject mo in s.Get())
+                    {
+                        di++;
+                        double wear = -1, temp = -1;
+                        double.TryParse(WmiStr(mo, "Wear"), out wear);
+                        double.TryParse(WmiStr(mo, "Temperature"), out temp);
+                        if (wear > 0)
+                        {
+                            int lvl = wear >= 80 ? 2 : (wear >= 50 ? 1 : 0);
+                            st.Items.Add(new HealthItem
+                            {
+                                Name = L.T("SSD wear") + " " + di,
+                                Detail = string.Format(L.T("{0:F0}% worn"), wear),
+                                Level = lvl
+                            });
+                        }
+                        if (temp > 0)
+                        {
+                            int lvl = temp >= 70 ? 2 : (temp >= 60 ? 1 : 0);
+                            st.Items.Add(new HealthItem
+                            {
+                                Name = L.T("Disk temperature") + " " + di,
+                                Detail = string.Format("{0:F0}°C", temp),
+                                Level = lvl
+                            });
+                        }
+                    }
+                }
+            }
+            catch { }
+            try
+            {
+                foreach (var d in DriveInfo.GetDrives())
+                {
+                    if (!d.IsReady || d.DriveType != DriveType.Fixed) continue;
+                    double freePct = 100.0 * d.AvailableFreeSpace / d.TotalSize;
+                    int lvl = freePct < 5 ? 2 : (freePct < 10 ? 1 : 0);
+                    st.Items.Add(new HealthItem
+                    {
+                        Name = d.Name.TrimEnd('\\') + " " + L.T("free space"),
+                        Detail = string.Format(L.T("{0:F0} GB free ({1:F0}%)"), d.AvailableFreeSpace / 1073741824.0, freePct),
+                        Level = lvl
+                    });
+                }
+            }
+            catch { }
+            if (st.Items.Count > 0) sections.Add(st);
+
+            // --- GPU (nvidia-smi) ---
+            var gp = new HealthSection { Title = "GPU" };
+            if (_nv.Available && !_nv.HasData)
+            {
+                try { _nv.Refresh(); } catch { }
+            }
+            if (_nv.HasData)
+            {
+                int tl = _nv.TempC >= 85 ? 2 : (_nv.TempC >= 75 ? 1 : 0);
+                gp.Items.Add(new HealthItem
+                {
+                    Name = L.T("GPU temperature"),
+                    Detail = string.Format("{0:F0}°C — {1}", _nv.TempC, _nv.GpuName),
+                    Level = tl
+                });
+                long mask = 0;
+                try
+                {
+                    string hx = _nv.ThrottleHex.Trim();
+                    if (hx.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                        mask = Convert.ToInt64(hx.Substring(2), 16);
+                }
+                catch { }
+                // 0x8 HW slowdown · 0x40 SW thermal · 0x80 HW power brake
+                bool slow = (mask & 0x8L) != 0 || (mask & 0x40L) != 0 || (mask & 0x80L) != 0;
+                gp.Items.Add(new HealthItem
+                {
+                    Name = L.T("GPU throttling"),
+                    Detail = slow ? L.T("Thermal/power slowdown active") : L.T("Not throttling"),
+                    Level = slow ? 1 : 0
+                });
+                if (_nv.MemTotalMB > 0)
+                {
+                    double used = _nv.MemUsedMB / _nv.MemTotalMB * 100.0;
+                    int vl = used >= 97 ? 2 : (used >= 90 ? 1 : 0);
+                    gp.Items.Add(new HealthItem
+                    {
+                        Name = L.T("VRAM headroom"),
+                        Detail = string.Format("{0:F1} / {1:F1} GB ({2:F0}%)", _nv.MemUsedMB / 1024.0, _nv.MemTotalMB / 1024.0, used),
+                        Level = vl
+                    });
+                }
+                if (_nv.PowerW >= 0 && _nv.PowerLimitW > 0)
+                    gp.Items.Add(new HealthItem
+                    {
+                        Name = L.T("Power draw"),
+                        Detail = string.Format("{0:F0} / {1:F0} W", _nv.PowerW, _nv.PowerLimitW),
+                        Level = 0
+                    });
+                gp.Items.Add(new HealthItem
+                {
+                    Name = L.T("Driver"),
+                    Detail = _nv.DriverVer,
+                    Level = 0
+                });
+            }
+            else
+            {
+                gp.Items.Add(new HealthItem { Name = "NVIDIA", Detail = L.T("nvidia-smi not available"), Level = 3 });
+            }
+            sections.Add(gp);
+
+            // --- Memory ---
+            var me = new HealthSection { Title = L.T("Memory") };
+            var mem = new MemStatusEx();
+            if (GlobalMemoryStatusEx(mem))
+            {
+                int lvl = mem.dwMemoryLoad >= 97 ? 2 : (mem.dwMemoryLoad >= 90 ? 1 : 0);
+                me.Items.Add(new HealthItem
+                {
+                    Name = L.T("Memory pressure"),
+                    Detail = string.Format(L.T("{0}% in use ({1:F1} / {2:F1} GB)"), mem.dwMemoryLoad,
+                        (mem.ullTotalPhys - mem.ullAvailPhys) / 1073741824.0, mem.ullTotalPhys / 1073741824.0),
+                    Level = lvl
+                });
+                if (mem.ullTotalPageFile > 0)
+                {
+                    double commit = 100.0 * (mem.ullTotalPageFile - mem.ullAvailPageFile) / mem.ullTotalPageFile;
+                    int cl = commit >= 95 ? 2 : (commit >= 85 ? 1 : 0);
+                    me.Items.Add(new HealthItem
+                    {
+                        Name = L.T("Commit charge"),
+                        Detail = string.Format("{0:F0}%", commit),
+                        Level = cl
+                    });
+                }
+            }
+            sections.Add(me);
+
+            // --- Battery ---
+            var ba = new HealthSection { Title = L.T("Battery") };
+            try
+            {
+                var scope = new ManagementScope(@"\\.\root\wmi");
+                scope.Connect();
+                double design = 0, full = 0;
+                using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT DesignedCapacity FROM BatteryStaticData")))
+                    foreach (ManagementObject mo in s.Get()) { double.TryParse(WmiStr(mo, "DesignedCapacity"), out design); break; }
+                using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT FullChargedCapacity FROM BatteryFullChargedCapacity")))
+                    foreach (ManagementObject mo in s.Get()) { double.TryParse(WmiStr(mo, "FullChargedCapacity"), out full); break; }
+                if (design > 0 && full > 0)
+                {
+                    double health = Math.Min(100, full / design * 100.0);
+                    int lvl = health < 60 ? 2 : (health < 80 ? 1 : 0);
+                    ba.Items.Add(new HealthItem
+                    {
+                        Name = L.T("Battery health"),
+                        Detail = string.Format("{0:F0}%", health),
+                        Level = lvl
+                    });
+                }
+            }
+            catch { }
+            if (ba.Items.Count > 0) sections.Add(ba);
+
+            // --- System ---
+            var sy = new HealthSection { Title = L.T("System") };
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\SecureBoot\State"))
+                    if (k != null)
+                    {
+                        object v = k.GetValue("UEFISecureBootEnabled");
+                        if (v != null)
+                        {
+                            bool on = Convert.ToInt32(v) == 1;
+                            sy.Items.Add(new HealthItem
+                            {
+                                Name = L.T("Secure Boot"),
+                                Detail = on ? L.T("Enabled") : L.T("Disabled"),
+                                Level = on ? 0 : 1
+                            });
+                        }
+                    }
+            }
+            catch { }
+            try
+            {
+                double days = TimeSpan.FromMilliseconds(GetTickCount64()).TotalDays;
+                int lvl = days >= 30 ? 1 : 0;
+                sy.Items.Add(new HealthItem
+                {
+                    Name = L.T("Uptime"),
+                    Detail = lvl == 1
+                        ? string.Format(L.T("{0:F0} days without a reboot — consider restarting"), days)
+                        : string.Format(L.T("{0:F1} days"), days),
+                    Level = lvl
+                });
+            }
+            catch { }
+            // CPU/system temperature (often unsupported without vendor drivers)
+            bool gotTemp = false;
+            try
+            {
+                var scope = new ManagementScope(@"\\.\root\wmi");
+                scope.Connect();
+                using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature")))
+                    foreach (ManagementObject mo in s.Get())
+                    {
+                        double raw = 0;
+                        double.TryParse(WmiStr(mo, "CurrentTemperature"), out raw);
+                        if (raw > 0)
+                        {
+                            double cel = raw / 10.0 - 273.15;
+                            int lvl = cel >= 95 ? 2 : (cel >= 85 ? 1 : 0);
+                            sy.Items.Add(new HealthItem
+                            {
+                                Name = L.T("Thermal zone"),
+                                Detail = string.Format("{0:F0}°C", cel),
+                                Level = lvl
+                            });
+                            gotTemp = true;
+                            break;
+                        }
+                    }
+            }
+            catch { }
+            if (!gotTemp)
+                sy.Items.Add(new HealthItem
+                {
+                    Name = L.T("CPU temperature"),
+                    Detail = L.T("Not supported on this system"),
+                    Level = 3
+                });
+            sections.Add(sy);
 
             return sections;
         }

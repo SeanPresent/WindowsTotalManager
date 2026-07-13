@@ -1,6 +1,6 @@
 # ⚡ WinTotal
 
-**An ultra-lightweight all-in-one Windows system utility — a single 96 KB executable with zero dependencies.**
+**An ultra-lightweight all-in-one Windows system utility — a single ~110 KB executable with zero dependencies.**
 
 No installer. No frameworks to download. No background services. Just one file.
 
@@ -11,7 +11,8 @@ No installer. No frameworks to download. No background services. Just one file.
 ### 📊 Real-time Dashboard
 - CPU · GPU · Memory · Disk usage refreshed every second, with 60-second history graphs
 - GPU usage is computed the same way Task Manager does it (max across summed engine types)
-- **Top 5 CPU / memory processes** — see what is slowing your machine down right now
+- **Live GPU telemetry via nvidia-smi** — temperature, power draw, and VRAM (used / total) right on the GPU card
+- **Top 5 CPU / GPU / memory processes** — including **per-process VRAM** (e.g. `python — 34% · 5.9 GB`), so you can see exactly what is eating your GPU during training
 - **Graceful close button** on every process row: sends a close request first (so the app
   can ask you to save), waits 5 seconds, and only force-kills after you confirm.
   23 critical Windows processes are protected from termination
@@ -27,6 +28,18 @@ One click on **Rescan** re-scans the whole machine and shows proof of the scan
 - Secure Boot & TPM status / network adapters with link speed
 
 ![System Specs](docs/specs.png)
+
+### 🩺 Health Check
+One-click hardware diagnosis with a green / yellow / red verdict per item:
+
+- Disk SMART status, SSD wear level, disk temperature, free space per drive
+- GPU temperature, thermal/power throttling, VRAM headroom, power draw vs limit
+- Memory pressure and commit charge
+- Battery wear (full-charge vs design capacity)
+- Secure Boot, uptime (reboot reminder), thermal zone when the system exposes it
+
+![Health Check](docs/health.png)
+*Health Check shown in Korean — the entire UI switches between English and Korean with one click.*
 
 ### 📦 App Manager
 - Desktop apps (64/32-bit registry + per-user) and Microsoft Store apps in one list
