@@ -42,7 +42,6 @@ namespace WinTotal
                 {
                     if (arg.StartsWith("--apps")) page = 1;
                     else if (arg == "--specs") page = 2;
-                    else if (arg == "--health") page = 3;
                     else if (arg == "--demo") DemoMode = true;
                     else if (arg == "--ko") lang = "ko";
                     else if (arg == "--en") lang = "en";
@@ -721,12 +720,11 @@ namespace WinTotal
         private bool _specsLoaded;
         private bool _specsScanning;
 
-        // Health check UI
-        private Grid _healthPage;
-        private Border _navHealth;
-        private StackPanel _healthPanel;
-        private TextBlock _healthStatus;
-        private bool _healthLoaded, _healthRunning;
+        // Health check (compact card at the bottom of the dashboard)
+        private Ellipse _healthDot;
+        private TextBlock _healthSummary, _healthStatus;
+        private StackPanel _healthIssues;
+        private bool _healthRunning;
 
         private static readonly string[] ProtectedKeys = new string[]
         {
@@ -924,8 +922,6 @@ namespace WinTotal
             _navApps = NavItem("", L.T("Apps"), delegate { ShowPage(1); });
             menu.Children.Add(_navDash);
             menu.Children.Add(_navSpecs);
-            _navHealth = NavItem(((char)0xE73E).ToString(), L.T("Health Check"), delegate { ShowPage(3); });
-            menu.Children.Add(_navHealth);
             menu.Children.Add(_navApps);
             navDock.Children.Add(menu);
 
@@ -938,11 +934,9 @@ namespace WinTotal
             _dashboardPage = BuildDashboardPage();
             _appsPage = BuildAppsPage();
             _specsPage = BuildSpecsPage();
-            _healthPage = BuildHealthPage();
             content.Children.Add(_dashboardPage);
             content.Children.Add(_appsPage);
             content.Children.Add(_specsPage);
-            content.Children.Add(_healthPage);
             root.Children.Add(content);
 
             ShowPage(0);
@@ -994,11 +988,9 @@ namespace WinTotal
             _dashboardPage.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
             _appsPage.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
             _specsPage.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
-            _healthPage.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
             SetNavActive(_navDash, idx == 0);
             SetNavActive(_navApps, idx == 1);
             SetNavActive(_navSpecs, idx == 2);
-            SetNavActive(_navHealth, idx == 3);
             if (idx == 1 && !_appsLoaded)
             {
                 _appsLoaded = true;
@@ -1008,11 +1000,6 @@ namespace WinTotal
             {
                 _specsLoaded = true;
                 LoadSpecsAsync();
-            }
-            if (idx == 3 && !_healthLoaded)
-            {
-                _healthLoaded = true;
-                RunHealthCheck();
             }
         }
 
@@ -1040,10 +1027,10 @@ namespace WinTotal
             _appsLoaded = false;
             _specsLoaded = false;
             _specsScanning = false;
-            _healthLoaded = false;
             _healthRunning = false;
             _apps = new List<AppEntry>();
             Content = BuildLayout(); // rebuild the whole UI in the new language
+            RunHealthCheck();
         }
 
         // ================= Dashboard =================
@@ -1052,6 +1039,7 @@ namespace WinTotal
             var page = new Grid { Margin = new Thickness(24, 20, 24, 24) };
             page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // header (title left / clock right) — Grid keeps the clock visible at narrow widths
@@ -1139,6 +1127,10 @@ namespace WinTotal
             procCard.Child = procGrid;
             Grid.SetRow(procCard, 2);
             page.Children.Add(procCard);
+
+            var healthCard = BuildHealthCard();
+            Grid.SetRow(healthCard, 3);
+            page.Children.Add(healthCard);
 
             return page;
         }
@@ -1611,6 +1603,8 @@ namespace WinTotal
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
             _timer.Tick += delegate { Tick(); };
             _timer.Start();
+
+            RunHealthCheck(); // initial diagnosis; re-runs every 10 minutes from Tick
         }
 
         private void Tick()
@@ -1677,6 +1671,9 @@ namespace WinTotal
 
             // top processes (every 3s)
             if (_tickCount % 3 == 1) UpdateTopProcs();
+
+            // re-run the health check every 10 minutes
+            if (_tickCount % 600 == 0) RunHealthCheck();
         }
 
         private void UpdateDiskSub()
@@ -2263,55 +2260,88 @@ namespace WinTotal
             return sections;
         }
 
-        // ================= Health Check =================
-        private Grid BuildHealthPage()
+        // ================= Health Check (compact dashboard card) =================
+        private Border BuildHealthCard()
         {
-            var page = new Grid { Margin = new Thickness(24, 20, 24, 24) };
-            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var card = new Border
+            {
+                Background = Ui.Br(Theme.Card),
+                BorderBrush = Ui.Br(Theme.CardBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(22, 12, 22, 12),
+                Margin = new Thickness(8, 8, 8, 0)
+            };
+            var stack = new StackPanel();
 
-            var head = new Grid { Margin = new Thickness(8, 0, 8, 14) };
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var headLeft = new StackPanel();
-            headLeft.Children.Add(new TextBlock
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            _healthDot = new Ellipse
+            {
+                Width = 10, Height = 10,
+                Fill = Ui.Br("#5C5C66"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 1, 10, 0)
+            };
+            Grid.SetColumn(_healthDot, 0);
+            row.Children.Add(_healthDot);
+
+            var title = new TextBlock
             {
                 Text = L.T("Health Check"),
-                FontSize = 21,
-                FontWeight = FontWeights.Bold,
-                Foreground = Brushes.White
-            });
-            _healthStatus = new TextBlock
+                FontSize = 12.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.Br(Theme.TextMid),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 14, 0)
+            };
+            Grid.SetColumn(title, 1);
+            row.Children.Add(title);
+
+            _healthSummary = new TextBlock
             {
-                Text = L.T("One-click hardware health diagnosis"),
-                FontSize = 11.5,
-                Foreground = Ui.Br(Theme.TextLow),
-                Margin = new Thickness(1, 5, 0, 0),
+                Text = L.T("Checking..."),
+                FontSize = 12.5,
+                Foreground = Brushes.White,
+                VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            headLeft.Children.Add(_healthStatus);
-            Grid.SetColumn(headLeft, 0);
-            head.Children.Add(headLeft);
+            Grid.SetColumn(_healthSummary, 2);
+            row.Children.Add(_healthSummary);
 
-            var runBtn = PillButton(((char)0xE73E).ToString(), L.T("Run Check"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
-                delegate { RunHealthCheck(); });
-            runBtn.VerticalAlignment = VerticalAlignment.Center;
-            runBtn.Margin = new Thickness(16, 0, 0, 0);
-            Grid.SetColumn(runBtn, 1);
-            head.Children.Add(runBtn);
-            Grid.SetRow(head, 0);
-            page.Children.Add(head);
-
-            var scroll = new ScrollViewer
+            _healthStatus = new TextBlock
             {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Margin = new Thickness(8, 0, 8, 0)
+                Text = "",
+                FontSize = 11,
+                Foreground = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 14, 0)
             };
-            _healthPanel = new StackPanel();
-            scroll.Content = _healthPanel;
-            Grid.SetRow(scroll, 1);
-            page.Children.Add(scroll);
-            return page;
+            Grid.SetColumn(_healthStatus, 3);
+            row.Children.Add(_healthStatus);
+
+            var refresh = PillButton(((char)0xE72C).ToString(), L.T("Run Check"),
+                Theme.BtnBg, Theme.BtnHover, Theme.BtnText, delegate { RunHealthCheck(); });
+            refresh.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(refresh, 4);
+            row.Children.Add(refresh);
+
+            stack.Children.Add(row);
+
+            _healthIssues = new StackPanel
+            {
+                Margin = new Thickness(20, 9, 0, 0),
+                Visibility = Visibility.Collapsed
+            };
+            stack.Children.Add(_healthIssues);
+
+            card.Child = stack;
+            return card;
         }
 
         private static string LevelColor(int level)
@@ -2327,140 +2357,64 @@ namespace WinTotal
 
         private void RunHealthCheck()
         {
-            if (_healthRunning) return;
+            if (_healthRunning || _healthSummary == null) return;
             _healthRunning = true;
             _healthStatus.Text = L.T("Checking...");
-            _healthPanel.Children.Clear();
-            _healthPanel.Children.Add(new TextBlock
-            {
-                Text = L.T("Checking..."),
-                FontSize = 12.5,
-                Foreground = Ui.Br(Theme.TextLow),
-                Margin = new Thickness(4, 10, 0, 0)
-            });
-            var sw = Stopwatch.StartNew();
             Task.Run<List<HealthSection>>(new Func<List<HealthSection>>(CollectHealth)).ContinueWith(t =>
             {
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    sw.Stop();
                     _healthRunning = false;
-                    _healthPanel.Children.Clear();
+                    if (_healthSummary == null) return;
                     if (t.IsFaulted || t.Result == null || t.Result.Count == 0)
                     {
                         _healthStatus.Text = L.T("Check failed — press Run Check to retry");
                         return;
                     }
-                    int okC = 0, warn = 0, bad = 0, unk = 0, total = 0;
+                    int okC = 0, warn = 0, bad = 0, unk = 0;
+                    var issues = new List<HealthItem>();
                     foreach (var s in t.Result)
                         foreach (var it in s.Items)
                         {
-                            total++;
                             if (it.Level == 0) okC++;
-                            else if (it.Level == 1) warn++;
-                            else if (it.Level == 2) bad++;
+                            else if (it.Level == 1) { warn++; issues.Add(it); }
+                            else if (it.Level == 2) { bad++; issues.Add(it); }
                             else unk++;
                         }
-
                     int overall = bad > 0 ? 2 : (warn > 0 ? 1 : 0);
-                    var banner = new Border
-                    {
-                        Background = Ui.Br(Theme.Card),
-                        BorderBrush = Ui.Br(LevelColor(overall)),
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(14),
-                        Padding = new Thickness(20, 14, 20, 14),
-                        Margin = new Thickness(0, 0, 0, 10)
-                    };
-                    var bsp = new StackPanel { Orientation = Orientation.Horizontal };
-                    bsp.Children.Add(new Ellipse
-                    {
-                        Width = 12, Height = 12,
-                        Fill = Ui.Br(LevelColor(overall)),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Margin = new Thickness(0, 1, 12, 0)
-                    });
-                    bsp.Children.Add(new TextBlock
-                    {
-                        Text = string.Format(L.T("{0} OK · {1} warning · {2} critical · {3} unknown"), okC, warn, bad, unk),
-                        FontSize = 14,
-                        FontWeight = FontWeights.SemiBold,
-                        Foreground = Brushes.White,
-                        VerticalAlignment = VerticalAlignment.Center
-                    });
-                    banner.Child = bsp;
-                    _healthPanel.Children.Add(banner);
+                    _healthDot.Fill = Ui.Br(LevelColor(overall));
+                    _healthSummary.Text = string.Format(L.T("{0} OK · {1} warning · {2} critical · {3} unknown"), okC, warn, bad, unk);
+                    _healthStatus.Text = DateTime.Now.ToString("HH:mm:ss");
 
-                    foreach (var s in t.Result)
-                        _healthPanel.Children.Add(HealthCard(s));
-
-                    _healthStatus.Text = string.Format(L.T("Last check {0} · took {1:F1}s · {2} items"),
-                        DateTime.Now.ToString("HH:mm:ss"), sw.Elapsed.TotalSeconds, total);
+                    _healthIssues.Children.Clear();
+                    if (issues.Count == 0)
+                    {
+                        _healthIssues.Visibility = Visibility.Collapsed;
+                        return;
+                    }
+                    _healthIssues.Visibility = Visibility.Visible;
+                    foreach (var it in issues)
+                    {
+                        var irow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+                        irow.Children.Add(new Ellipse
+                        {
+                            Width = 8, Height = 8,
+                            Fill = Ui.Br(LevelColor(it.Level)),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(0, 1, 9, 0)
+                        });
+                        irow.Children.Add(new TextBlock
+                        {
+                            Text = it.Name + " — " + it.Detail,
+                            FontSize = 11.5,
+                            Foreground = Ui.Br("#C9C9D1"),
+                            TextTrimming = TextTrimming.CharacterEllipsis
+                        });
+                        _healthIssues.Children.Add(irow);
+                    }
                 }));
             });
         }
-
-        private Border HealthCard(HealthSection s)
-        {
-            var card = new Border
-            {
-                Background = Ui.Br(Theme.Card),
-                BorderBrush = Ui.Br(Theme.CardBorder),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(14),
-                Padding = new Thickness(20, 15, 20, 16),
-                Margin = new Thickness(0, 0, 0, 10)
-            };
-            var stack = new StackPanel();
-            stack.Children.Add(new TextBlock
-            {
-                Text = s.Title,
-                FontSize = 13.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brushes.White,
-                Margin = new Thickness(0, 0, 0, 10)
-            });
-            foreach (var it in s.Items)
-            {
-                var row = new Grid { Margin = new Thickness(4, 0, 0, 8) };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                var dot = new Ellipse
-                {
-                    Width = 9, Height = 9,
-                    Fill = Ui.Br(LevelColor(it.Level)),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    Margin = new Thickness(0, 4, 0, 0)
-                };
-                Grid.SetColumn(dot, 0);
-                row.Children.Add(dot);
-                var nm = new TextBlock
-                {
-                    Text = it.Name,
-                    FontSize = 12.5,
-                    Foreground = Ui.Br("#C9C9D1"),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Margin = new Thickness(0, 0, 10, 0)
-                };
-                Grid.SetColumn(nm, 1);
-                row.Children.Add(nm);
-                var dt = new TextBlock
-                {
-                    Text = it.Detail,
-                    FontSize = 12.5,
-                    Foreground = Ui.Br(Theme.TextMid),
-                    TextWrapping = TextWrapping.Wrap
-                };
-                Grid.SetColumn(dt, 2);
-                row.Children.Add(dt);
-                stack.Children.Add(row);
-            }
-            card.Child = stack;
-            return card;
-        }
-
         private List<HealthSection> CollectHealth()
         {
             var sections = new List<HealthSection>();
