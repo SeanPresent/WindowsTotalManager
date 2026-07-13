@@ -265,7 +265,13 @@ namespace WinTotal
             { "{0:F1} days", "{0:F1}일" },
             { "Thermal zone", "온도 센서" },
             { "CPU temperature", "CPU 온도" },
-            { "Not supported on this system", "이 시스템에서는 지원되지 않음" }
+            { "Not supported on this system", "이 시스템에서는 지원되지 않음" },
+            { "Running", "실행 중" },
+            { "End", "종료" },
+            { "Close the running processes of \"{0}\"?\n\nA close request is sent first so the app can save; you will be asked again before any force kill.", "\"{0}\"의 실행 중인 프로세스를 종료할까요?\n\n먼저 닫기 요청을 보내 저장할 기회를 주고, 강제 종료 전에 다시 확인합니다." },
+            { "Closing processes of \"{0}\"...", "\"{0}\" 프로세스 종료 중..." },
+            { "{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost.", "\"{1}\"의 프로세스 {0}개가 아직 실행 중입니다.\n강제 종료할까요? 저장하지 않은 데이터는 사라질 수 있습니다." },
+            { "Processes of \"{0}\" closed.", "\"{0}\" 프로세스를 종료했습니다." }
         };
 
         public static string T(string s)
@@ -653,6 +659,7 @@ namespace WinTotal
         public bool IsStore;
         public string PackageFullName;
         public string Category;
+        public List<int> RunningPids;
     }
 
     // ---------- Main window ----------
@@ -686,6 +693,8 @@ namespace WinTotal
         private GpuMemMonitor _gpuMem = new GpuMemMonitor();
         private NvSmi _nv = new NvSmi();
         private bool _nvBusy;
+        private double _gpuUsageCache;
+        private bool _gpuSampleBusy;
         private DispatcherTimer _timer;
         private int _tickCount;
 
@@ -722,9 +731,11 @@ namespace WinTotal
 
         // Health check (compact card at the bottom of the dashboard)
         private Ellipse _healthDot;
-        private TextBlock _healthSummary, _healthStatus;
-        private StackPanel _healthIssues;
-        private bool _healthRunning;
+        private TextBlock _healthSummary, _healthStatus, _healthChevron;
+        private StackPanel _healthDetail;
+        private ScrollViewer _healthDetailScroll;
+        private List<HealthSection> _healthResults;
+        private bool _healthRunning, _healthExpanded;
 
         private static readonly string[] ProtectedKeys = new string[]
         {
@@ -1038,8 +1049,8 @@ namespace WinTotal
         {
             var page = new Grid { Margin = new Thickness(24, 20, 24, 24) };
             page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // header (title left / clock right) — Grid keeps the clock visible at narrow widths
@@ -1100,7 +1111,7 @@ namespace WinTotal
             grid.Children.Add(MakeCard("GPU", Theme.AccGpu, out _gpuVal, out _gpuSub, out _gpuChart));
             grid.Children.Add(MakeCard(L.T("Memory"), Theme.AccRam, out _ramVal, out _ramSub, out _ramChart));
             grid.Children.Add(MakeCard(L.T("Disk"), Theme.AccDisk, out _diskVal, out _diskSub, out _diskChart));
-            Grid.SetRow(grid, 1);
+            Grid.SetRow(grid, 2);
             page.Children.Add(grid);
 
             // top-process card (what is using resources)
@@ -1125,11 +1136,11 @@ namespace WinTotal
             _topRamPanel = MakeTopColumn(procGrid, 4, L.T("Top memory processes"), Theme.AccRam);
 
             procCard.Child = procGrid;
-            Grid.SetRow(procCard, 2);
+            Grid.SetRow(procCard, 3);
             page.Children.Add(procCard);
 
             var healthCard = BuildHealthCard();
-            Grid.SetRow(healthCard, 3);
+            Grid.SetRow(healthCard, 1);
             page.Children.Add(healthCard);
 
             return page;
@@ -1632,11 +1643,20 @@ namespace WinTotal
                 catch { }
             }
 
-            // GPU
-            double gpu = _gpu.Read();
+            // GPU — sampled on a background thread (counter rebuilds can stall for seconds)
+            if (!_gpuSampleBusy)
+            {
+                _gpuSampleBusy = true;
+                Task.Run(delegate
+                {
+                    _gpuUsageCache = _gpu.Read();
+                    _gpuMem.Read();
+                    _gpuSampleBusy = false;
+                });
+            }
+            double gpu = _gpuUsageCache;
             SetBigValue(_gpuVal, _gpu.Available ? string.Format("{0:F0}", gpu) : "N/A", _gpu.Available ? "%" : "");
             _gpuChart.Push(gpu);
-            _gpuMem.Read();
             if (_tickCount % 3 == 0 && _nv.Available && !_nvBusy)
             {
                 _nvBusy = true;
@@ -2270,16 +2290,21 @@ namespace WinTotal
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(16),
                 Padding = new Thickness(22, 12, 22, 12),
-                Margin = new Thickness(8, 8, 8, 0)
+                Margin = new Thickness(8, 0, 8, 6)
             };
             var stack = new StackPanel();
 
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            // clickable area: dot + title + chevron + summary → toggles the detail list
+            var clickArea = new Grid { Background = Brushes.Transparent, Cursor = Cursors.Hand };
+            clickArea.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            clickArea.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            clickArea.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            clickArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             _healthDot = new Ellipse
             {
@@ -2289,7 +2314,7 @@ namespace WinTotal
                 Margin = new Thickness(0, 1, 10, 0)
             };
             Grid.SetColumn(_healthDot, 0);
-            row.Children.Add(_healthDot);
+            clickArea.Children.Add(_healthDot);
 
             var title = new TextBlock
             {
@@ -2298,10 +2323,22 @@ namespace WinTotal
                 FontWeight = FontWeights.SemiBold,
                 Foreground = Ui.Br(Theme.TextMid),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 14, 0)
+                Margin = new Thickness(0, 0, 8, 0)
             };
             Grid.SetColumn(title, 1);
-            row.Children.Add(title);
+            clickArea.Children.Add(title);
+
+            _healthChevron = new TextBlock
+            {
+                Text = ((char)0xE70D).ToString(), // ChevronDown
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 10,
+                Foreground = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 2, 14, 0)
+            };
+            Grid.SetColumn(_healthChevron, 2);
+            clickArea.Children.Add(_healthChevron);
 
             _healthSummary = new TextBlock
             {
@@ -2311,8 +2348,12 @@ namespace WinTotal
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            Grid.SetColumn(_healthSummary, 2);
-            row.Children.Add(_healthSummary);
+            Grid.SetColumn(_healthSummary, 3);
+            clickArea.Children.Add(_healthSummary);
+
+            clickArea.MouseLeftButtonUp += delegate { ToggleHealthDetail(); };
+            Grid.SetColumn(clickArea, 0);
+            row.Children.Add(clickArea);
 
             _healthStatus = new TextBlock
             {
@@ -2322,26 +2363,95 @@ namespace WinTotal
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 14, 0)
             };
-            Grid.SetColumn(_healthStatus, 3);
+            Grid.SetColumn(_healthStatus, 1);
             row.Children.Add(_healthStatus);
 
             var refresh = PillButton(((char)0xE72C).ToString(), L.T("Run Check"),
                 Theme.BtnBg, Theme.BtnHover, Theme.BtnText, delegate { RunHealthCheck(); });
             refresh.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(refresh, 4);
+            Grid.SetColumn(refresh, 2);
             row.Children.Add(refresh);
 
             stack.Children.Add(row);
 
-            _healthIssues = new StackPanel
+            _healthDetail = new StackPanel { Margin = new Thickness(4, 6, 0, 0) };
+            _healthDetailScroll = new ScrollViewer
             {
-                Margin = new Thickness(20, 9, 0, 0),
-                Visibility = Visibility.Collapsed
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                MaxHeight = 195,
+                Margin = new Thickness(16, 4, 0, 0),
+                Visibility = Visibility.Collapsed,
+                Content = _healthDetail
             };
-            stack.Children.Add(_healthIssues);
+            stack.Children.Add(_healthDetailScroll);
 
             card.Child = stack;
             return card;
+        }
+
+        private void ToggleHealthDetail()
+        {
+            _healthExpanded = !_healthExpanded;
+            ApplyHealthDetailVisibility();
+        }
+
+        private void ApplyHealthDetailVisibility()
+        {
+            if (_healthDetailScroll == null) return;
+            _healthDetailScroll.Visibility = _healthExpanded ? Visibility.Visible : Visibility.Collapsed;
+            _healthChevron.Text = (_healthExpanded ? (char)0xE70E : (char)0xE70D).ToString();
+        }
+
+        private void RenderHealthDetail()
+        {
+            _healthDetail.Children.Clear();
+            if (_healthResults == null) return;
+            foreach (var s in _healthResults)
+            {
+                _healthDetail.Children.Add(new TextBlock
+                {
+                    Text = s.Title,
+                    FontSize = 11.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = Ui.Br(Theme.TextLow),
+                    Margin = new Thickness(0, 6, 0, 4)
+                });
+                foreach (var it in s.Items)
+                {
+                    var irow = new Grid { Margin = new Thickness(6, 0, 0, 4) };
+                    irow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
+                    irow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
+                    irow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    var dot = new Ellipse
+                    {
+                        Width = 8, Height = 8,
+                        Fill = Ui.Br(LevelColor(it.Level)),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    Grid.SetColumn(dot, 0);
+                    irow.Children.Add(dot);
+                    var nm = new TextBlock
+                    {
+                        Text = it.Name,
+                        FontSize = 11.5,
+                        Foreground = Ui.Br("#C9C9D1"),
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Margin = new Thickness(0, 0, 10, 0)
+                    };
+                    Grid.SetColumn(nm, 1);
+                    irow.Children.Add(nm);
+                    var dt = new TextBlock
+                    {
+                        Text = it.Detail,
+                        FontSize = 11.5,
+                        Foreground = Ui.Br(Theme.TextMid),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    };
+                    Grid.SetColumn(dt, 2);
+                    irow.Children.Add(dt);
+                    _healthDetail.Children.Add(irow);
+                }
+            }
         }
 
         private static string LevelColor(int level)
@@ -2371,47 +2481,23 @@ namespace WinTotal
                         _healthStatus.Text = L.T("Check failed — press Run Check to retry");
                         return;
                     }
+                    _healthResults = t.Result;
                     int okC = 0, warn = 0, bad = 0, unk = 0;
-                    var issues = new List<HealthItem>();
                     foreach (var s in t.Result)
                         foreach (var it in s.Items)
                         {
                             if (it.Level == 0) okC++;
-                            else if (it.Level == 1) { warn++; issues.Add(it); }
-                            else if (it.Level == 2) { bad++; issues.Add(it); }
+                            else if (it.Level == 1) warn++;
+                            else if (it.Level == 2) bad++;
                             else unk++;
                         }
                     int overall = bad > 0 ? 2 : (warn > 0 ? 1 : 0);
                     _healthDot.Fill = Ui.Br(LevelColor(overall));
                     _healthSummary.Text = string.Format(L.T("{0} OK · {1} warning · {2} critical · {3} unknown"), okC, warn, bad, unk);
                     _healthStatus.Text = DateTime.Now.ToString("HH:mm:ss");
-
-                    _healthIssues.Children.Clear();
-                    if (issues.Count == 0)
-                    {
-                        _healthIssues.Visibility = Visibility.Collapsed;
-                        return;
-                    }
-                    _healthIssues.Visibility = Visibility.Visible;
-                    foreach (var it in issues)
-                    {
-                        var irow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-                        irow.Children.Add(new Ellipse
-                        {
-                            Width = 8, Height = 8,
-                            Fill = Ui.Br(LevelColor(it.Level)),
-                            VerticalAlignment = VerticalAlignment.Center,
-                            Margin = new Thickness(0, 1, 9, 0)
-                        });
-                        irow.Children.Add(new TextBlock
-                        {
-                            Text = it.Name + " — " + it.Detail,
-                            FontSize = 11.5,
-                            Foreground = Ui.Br("#C9C9D1"),
-                            TextTrimming = TextTrimming.CharacterEllipsis
-                        });
-                        _healthIssues.Children.Add(irow);
-                    }
+                    RenderHealthDetail();
+                    if (bad > 0 || warn > 0) _healthExpanded = true; // auto-expand on issues
+                    ApplyHealthDetailVisibility();
                 }));
             });
         }
@@ -2979,6 +3065,7 @@ namespace WinTotal
                         final.Add(a);
                     }
                 }
+                MarkRunning(final);
                 return final;
             }).ContinueWith(t =>
             {
@@ -3174,6 +3261,19 @@ namespace WinTotal
                 badge.Child = new TextBlock { Text = "Store", FontSize = 10, Foreground = Ui.Br("#5EAAFF") };
                 nameRow.Children.Add(badge);
             }
+            if (a.RunningPids != null && a.RunningPids.Count > 0)
+            {
+                var runBadge = new Border
+                {
+                    Background = Ui.Br("#0F2E1B"),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(7, 1, 7, 2),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                runBadge.Child = new TextBlock { Text = L.T("Running"), FontSize = 10, Foreground = Ui.Br("#4ADE80") };
+                nameRow.Children.Add(runBadge);
+            }
             nameStack.Children.Add(nameRow);
             nameStack.Children.Add(new TextBlock
             {
@@ -3215,6 +3315,13 @@ namespace WinTotal
             var btns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             var localA = a;
             var localRow = row;
+            if (a.RunningPids != null && a.RunningPids.Count > 0)
+            {
+                var endBtn = PillButton(null, L.T("End"), "#2E2410", "#41331A", "#FFD60A",
+                    delegate { EndAppProcesses(localA); });
+                endBtn.Margin = new Thickness(0, 0, 7, 0);
+                btns.Children.Add(endBtn);
+            }
             btns.Children.Add(PillButton(null, L.T("Uninstall"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
                 delegate { UninstallApp(localA, localRow); }));
             if (!a.IsStore)
@@ -3246,6 +3353,97 @@ namespace WinTotal
                     || (a.PackageFullName ?? "").ToLowerInvariant().Contains(q));
                 row.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             }
+        }
+
+        // ---------- Running-process detection & graceful close ----------
+        // Match running processes to apps by install dir (desktop) or package name in path (Store)
+        private static void MarkRunning(List<AppEntry> apps)
+        {
+            var dirMap = new List<KeyValuePair<string, AppEntry>>();
+            foreach (var a in apps)
+            {
+                if (a.IsStore)
+                {
+                    if (!string.IsNullOrEmpty(a.PackageFullName))
+                        dirMap.Add(new KeyValuePair<string, AppEntry>("\\" + a.PackageFullName.ToLowerInvariant() + "\\", a));
+                }
+                else
+                {
+                    string dir = GuessInstallDir(a);
+                    if (!string.IsNullOrEmpty(dir) && dir.Length > 4)
+                        dirMap.Add(new KeyValuePair<string, AppEntry>(dir.TrimEnd('\\') .ToLowerInvariant() + "\\", a));
+                }
+            }
+            if (dirMap.Count == 0) return;
+            Process[] procs;
+            try { procs = Process.GetProcesses(); } catch { return; }
+            foreach (var p in procs)
+            {
+                int pid;
+                string path = null;
+                try
+                {
+                    pid = p.Id;
+                    path = p.MainModule.FileName.ToLowerInvariant();
+                }
+                catch { continue; }
+                finally { try { p.Dispose(); } catch { } }
+                if (string.IsNullOrEmpty(path)) continue;
+                foreach (var kv in dirMap)
+                {
+                    bool hit = kv.Key[0] == '\\' ? path.Contains(kv.Key) : path.StartsWith(kv.Key);
+                    if (hit)
+                    {
+                        if (kv.Value.RunningPids == null) kv.Value.RunningPids = new List<int>();
+                        kv.Value.RunningPids.Add(pid);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void EndAppProcesses(AppEntry a)
+        {
+            if (a.RunningPids == null || a.RunningPids.Count == 0) return;
+            if (MessageBox.Show(this,
+                string.Format(L.T("Close the running processes of \"{0}\"?\n\nA close request is sent first so the app can save; you will be asked again before any force kill."), a.Name),
+                L.T("Graceful Close"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            var pids = new List<int>(a.RunningPids);
+            SetStatus(string.Format(L.T("Closing processes of \"{0}\"..."), a.Name));
+            Task.Run(delegate
+            {
+                var procs = new List<Process>();
+                foreach (var pid in pids)
+                {
+                    try { procs.Add(Process.GetProcessById(pid)); } catch { }
+                }
+                foreach (var p in procs)
+                {
+                    try { if (p.MainWindowHandle != IntPtr.Zero) p.CloseMainWindow(); } catch { }
+                }
+                for (int i = 0; i < 10; i++)
+                {
+                    System.Threading.Thread.Sleep(500);
+                    bool alive = false;
+                    foreach (var p in procs) { try { if (!p.HasExited) { alive = true; break; } } catch { } }
+                    if (!alive) break;
+                }
+                var still = new List<Process>();
+                foreach (var p in procs) { try { if (!p.HasExited) still.Add(p); } catch { } }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (still.Count > 0)
+                    {
+                        if (MessageBox.Show(this,
+                            string.Format(L.T("{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost."), still.Count, a.Name),
+                            L.T("Force Kill"), MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+                            foreach (var p in still) { try { p.Kill(); } catch { } }
+                    }
+                    a.RunningPids = null;
+                    SetStatus(string.Format(L.T("Processes of \"{0}\" closed."), a.Name));
+                }));
+            });
         }
 
         // ---------- Uninstall ----------

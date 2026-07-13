@@ -30,7 +30,8 @@ One click on **Rescan** re-scans the whole machine and shows proof of the scan
 ![System Specs](docs/specs.png)
 
 ### 🩺 Health Check
-One-click hardware diagnosis with a green / yellow / red verdict per item:
+A compact strip at the top of the dashboard — runs automatically on startup and every
+10 minutes, and expands into the full report when clicked:
 
 - Disk SMART status, SSD wear level, disk temperature, free space per drive
 - GPU temperature, thermal/power throttling, VRAM headroom, power draw vs limit
@@ -39,7 +40,7 @@ One-click hardware diagnosis with a green / yellow / red verdict per item:
 - Secure Boot, uptime (reboot reminder), thermal zone when the system exposes it
 
 ![Health Check](docs/health.png)
-*Health Check shown in Korean — the entire UI switches between English and Korean with one click.*
+*Click the strip to expand the full green / yellow / red report.*
 
 ### 📦 App Manager
 - Desktop apps (64/32-bit registry + per-user) and Microsoft Store apps in one list
@@ -49,6 +50,10 @@ One-click hardware diagnosis with a green / yellow / red verdict per item:
 - **Uninstall**: runs the official uninstaller, then cleans leftover registry keys
 - **Force Delete**: removes the registry entries and the install folder immediately —
   handy for apps that leave traces behind
+- **Running detection**: apps with live processes get a green `Running` badge and an
+  **End** button — close request first, confirmed force kill only as a last resort
+
+![Running detection](docs/apps_running.png)
 
 ![App Manager](docs/apps.png)
 
