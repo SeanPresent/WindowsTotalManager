@@ -112,9 +112,11 @@ namespace WinTotal
     {
         public static bool Ko;
 
+        private static readonly CultureInfo KoCulture = new CultureInfo("ko-KR");
+        private static readonly CultureInfo EnCulture = new CultureInfo("en-US");
         public static CultureInfo Culture
         {
-            get { return new CultureInfo(Ko ? "ko-KR" : "en-US"); }
+            get { return Ko ? KoCulture : EnCulture; }
         }
         public static string ClockFormat { get { return Ko ? "M월 d일 dddd" : "ddd, MMM d"; } }
         public static string DateFormat { get { return Ko ? "yyyy년 M월 d일" : "MMM d, yyyy"; } }
@@ -125,7 +127,7 @@ namespace WinTotal
             { "Dashboard", "대시보드" },
             { "System Specs", "시스템 사양" },
             { "Apps", "앱 관리" },
-            { "v1.4 · single executable", "v1.4 · 단일 실행 파일" },
+            { "v1.5 · single executable", "v1.5 · 단일 실행 파일" },
             { "Real-time System Monitor", "실시간 시스템 모니터" },
             { "Collecting system info...", "시스템 정보 수집 중..." },
             { "Memory", "메모리" },
@@ -144,6 +146,9 @@ namespace WinTotal
             { "\"{0}\" closed gracefully.", "\"{0}\"이(가) 정상적으로 종료되었습니다." },
             { "{1} \"{0}\" process(es) are still running.\n(no window, or not responding to the close request)\n\nForce kill? Unsaved data may be lost.", "\"{0}\" 프로세스 {1}개가 아직 실행 중입니다.\n(창이 없거나 닫기 요청에 응답하지 않음)\n\n강제 종료할까요? 저장하지 않은 데이터는 사라질 수 있습니다." },
             { "Force Kill", "강제 종료" },
+            { "System · cannot close", "시스템 · 종료 불가" },
+            { "Close WinTotal (this app)?", "WinTotal(이 앱)을 종료할까요?" },
+            { "Protected system process — cannot be closed", "보호된 시스템 프로세스 — 종료할 수 없습니다" },
             { "Hardware & software details of this PC", "이 PC의 하드웨어 · 소프트웨어 정보" },
             { "Rescan", "재검사" },
             { "Scanning hardware...", "하드웨어 검사 중..." },
@@ -236,10 +241,8 @@ namespace WinTotal
             { "No active GPU processes", "GPU 사용 중인 프로세스 없음" },
             { "Health Check", "상태 진단" },
             { "Run Check", "진단 실행" },
-            { "Checking...", "진단 중..." },
-            { "One-click hardware health diagnosis", "클릭 한 번으로 하드웨어 상태를 진단합니다" },
+            { "Diagnosing...", "진단 중..." },
             { "Check failed — press Run Check to retry", "진단 실패 — 진단 실행을 눌러 다시 시도하세요" },
-            { "Last check {0} · took {1:F1}s · {2} items", "마지막 진단 {0} · {1:F1}초 소요 · {2}개 항목" },
             { "{0} OK · {1} warning · {2} critical · {3} unknown", "정상 {0} · 주의 {1} · 위험 {2} · 확인 불가 {3}" },
             { "Healthy", "정상" },
             { "Warning", "주의" },
@@ -274,7 +277,7 @@ namespace WinTotal
             { "{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost.", "\"{1}\"의 프로세스 {0}개가 아직 실행 중입니다.\n강제 종료할까요? 저장하지 않은 데이터는 사라질 수 있습니다." },
             { "Processes of \"{0}\" closed.", "\"{0}\" 프로세스를 종료했습니다." },
             { "Quick Fixes", "빠른 수리" },
-            { "One-click repairs for common Windows problems", "자주 겪는 윈도우 문제를 클릭 한 번으로 수리합니다" },
+            { "Check first, then repair only if needed — for common Windows problems", "먼저 검사하고, 필요할 때만 수리합니다 — 자주 겪는 Windows 문제 해결" },
             { "Open Terminal", "터미널 열기" },
             { "Fix Internet", "인터넷 수리" },
             { "Flush DNS and reset the network stack (Winsock/IP). A reboot is recommended afterwards.", "DNS 캐시를 비우고 네트워크 스택(Winsock/IP)을 초기화합니다. 완료 후 재부팅을 권장합니다." },
@@ -287,6 +290,42 @@ namespace WinTotal
             { "Run", "실행" },
             { "Run \"{0}\"?\n\n{1}", "\"{0}\"을(를) 실행할까요?\n\n{1}" },
             { "Another fix is already running.", "다른 수리 작업이 실행 중입니다." },
+            { "Check", "검사" },
+            { "Checking...", "검사 중..." },
+            { "Not checked yet", "아직 검사하지 않음" },
+            { "Network OK — repair not needed", "네트워크 정상 — 수리가 필요하지 않습니다" },
+            { "Connection problems detected — repair recommended", "연결 문제 감지 — 수리를 권장합니다" },
+            { "No network connection — check the adapter, then run repair", "네트워크 연결 없음 — 어댑터 확인 후 수리를 실행하세요" },
+            { "ping 8.8.8.8: OK ({0} ms)", "ping 8.8.8.8: 정상 ({0} ms)" },
+            { "ping 8.8.8.8: failed", "ping 8.8.8.8: 실패" },
+            { "DNS lookup: OK", "DNS 조회: 정상" },
+            { "DNS lookup: failed", "DNS 조회: 실패" },
+            { "Temp files: {0} ({1} files)", "임시 파일: {0} ({1}개)" },
+            { "Recycle Bin: {0} ({1} items)", "휴지통: {0} ({1}개)" },
+            { "About {0} can be freed — temp files {1} · Recycle Bin {2}", "약 {0} 정리 가능 — 임시 파일 {1} · 휴지통 {2}" },
+            { "Nothing significant to clean (about {0})", "정리할 항목이 거의 없습니다 (약 {0})" },
+            { "Component store status: {0}", "구성 요소 저장소 상태: {0}" },
+            { "No system file corruption detected — repair not needed", "시스템 파일 손상 흔적 없음 — 수리가 필요하지 않습니다" },
+            { "Corruption detected — repair is recommended", "손상 감지 — 수리 실행을 권장합니다" },
+            { "Check inconclusive — you can still run the repair", "검사 불확정 — 필요하면 수리를 실행하세요" },
+            { "Administrator rights are required for this check.", "이 검사에는 관리자 권한이 필요합니다." },
+            { "Explorer is running normally", "탐색기 정상 동작 중" },
+            { "Explorer is not responding — restart recommended", "탐색기 응답 없음 — 재시작을 권장합니다" },
+            { "Explorer is not running — restart needed", "탐색기가 실행 중이 아님 — 재시작이 필요합니다" },
+            { "Repair finished — run Check again to verify", "수리 완료 — 다시 검사해서 확인하세요" },
+            { "Store", "스토어" },
+            { "ERROR: ", "오류: " },
+            { "{0} files deleted...", "{0}개 파일 삭제됨..." },
+            { "Recycle Bin already empty (or could not be emptied)", "휴지통이 이미 비어 있음 (또는 비우기 실패)" },
+            { "Step failed (exit code {0})", "단계 실패 (종료 코드 {0})" },
+            { "Finished, but some steps failed — see the log above.", "완료했지만 일부 단계가 실패했습니다 — 위 로그를 확인하세요." },
+            { "Command timed out and was stopped.", "명령이 시간을 초과해 중단되었습니다." },
+            { "Not running as administrator — network reset, system file repair and Windows Temp cleanup may fail.", "관리자 권한이 아닙니다 — 네트워크 초기화, 시스템 파일 복구, Windows Temp 정리가 실패할 수 있습니다." },
+            { "A repair is still running. Quit anyway?\n(The running command will continue in the background.)", "수리 작업이 아직 실행 중입니다. 그래도 종료할까요?\n(실행 중인 명령은 백그라운드에서 계속 진행됩니다.)" },
+            { "Store app list unavailable — showing desktop apps only.", "스토어 앱 목록을 가져오지 못했습니다 — 데스크톱 앱만 표시합니다." },
+            { "Could not uninstall \"{0}\". The app may be running or need administrator rights.", "\"{0}\"을(를) 제거하지 못했습니다. 앱이 실행 중이거나 관리자 권한이 필요할 수 있습니다." },
+            { "{0} process(es) did not close.", "프로세스 {0}개가 종료되지 않았습니다." },
+            { "Deleting leftovers...", "잔여 파일 삭제 중..." },
             { "A reboot is recommended.", "재부팅을 권장합니다." },
             { "Recycle Bin emptied", "휴지통 비움" },
             { "Freed {0:F0} MB", "{0:F0} MB 확보" },
@@ -304,9 +343,22 @@ namespace WinTotal
     }
     public static class Ui
     {
+        // the palette is a fixed set of constants, so frozen brushes are cached forever;
+        // frozen brushes are thread-safe and carry no change-notification overhead
+        private static readonly Dictionary<string, SolidColorBrush> BrushCache = new Dictionary<string, SolidColorBrush>();
+        private static readonly object BrushLock = new object();
+
         public static SolidColorBrush Br(string hex)
         {
-            return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            lock (BrushLock)
+            {
+                SolidColorBrush b;
+                if (BrushCache.TryGetValue(hex, out b)) return b;
+                b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+                b.Freeze();
+                BrushCache[hex] = b;
+                return b;
+            }
         }
         public static Color Col(string hex)
         {
@@ -328,6 +380,7 @@ namespace WinTotal
         {
             ClipToBounds = true;
             var gridBrush = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255));
+            gridBrush.Freeze();
             for (int i = 0; i < 3; i++)
             {
                 _gridLines[i] = new Line { Stroke = gridBrush, StrokeThickness = 1 };
@@ -336,16 +389,21 @@ namespace WinTotal
             var gb = new LinearGradientBrush(
                 Color.FromArgb(85, c.R, c.G, c.B),
                 Color.FromArgb(0, c.R, c.G, c.B), 90);
+            gb.Freeze();
             _fill = new Polygon { Fill = gb };
+            var glowBrush = new SolidColorBrush(Color.FromArgb(55, c.R, c.G, c.B));
+            glowBrush.Freeze();
             _glow = new Polyline
             {
-                Stroke = new SolidColorBrush(Color.FromArgb(55, c.R, c.G, c.B)),
+                Stroke = glowBrush,
                 StrokeThickness = 6,
                 StrokeLineJoin = PenLineJoin.Round
             };
+            var lineBrush = new SolidColorBrush(c);
+            lineBrush.Freeze();
             _line = new Polyline
             {
-                Stroke = new SolidColorBrush(c),
+                Stroke = lineBrush,
                 StrokeThickness = 2,
                 StrokeLineJoin = PenLineJoin.Round
             };
@@ -388,38 +446,65 @@ namespace WinTotal
             if (_values.Count < 2) return;
             double step = w / (Capacity - 1);
             int n = _values.Count;
-            var pts = new PointCollection();
+            // reuse the PointCollections; in-place writes on a Freezable trigger re-render
+            bool rebuild = _pts == null || _pts.Count != n;
+            if (rebuild)
+            {
+                _pts = new PointCollection(n);
+                _fillPts = new PointCollection(n + 2);
+                for (int i = 0; i < n; i++) _pts.Add(new Point());
+                for (int i = 0; i < n + 2; i++) _fillPts.Add(new Point());
+            }
             for (int i = 0; i < n; i++)
             {
                 double x = w - (n - 1 - i) * step;
                 double y = h - 2 - (_values[i] / 100.0) * (h - 6);
-                pts.Add(new Point(x, y));
+                var pt = new Point(x, y);
+                _pts[i] = pt;
+                _fillPts[i + 1] = pt;
             }
-            _line.Points = pts;
-            _glow.Points = pts;
-            var fp = new PointCollection(pts);
-            fp.Insert(0, new Point(w - (n - 1) * step, h));
-            fp.Add(new Point(w, h));
-            _fill.Points = fp;
+            _fillPts[0] = new Point(w - (n - 1) * step, h);
+            _fillPts[n + 1] = new Point(w, h);
+            if (rebuild)
+            {
+                _line.Points = _pts;
+                _glow.Points = _pts;
+                _fill.Points = _fillPts;
+            }
         }
+
+        private PointCollection _pts, _fillPts;
     }
 
     // ---------- GPU usage (Task Manager style: max of per-engine-type sums) ----------
     public class GpuMonitor
     {
         private List<PerformanceCounter> _counters = new List<PerformanceCounter>();
-        private DateTime _lastRebuild = DateTime.MinValue;
+        private PerformanceCounterCategory _cat;
+        private HashSet<string> _instNames = new HashSet<string>();
+        private DateTime _lastCheck = DateTime.MinValue;
         public bool Available = true;
         public Dictionary<int, float> PidUsage = new Dictionary<int, float>(); // per-process GPU %
+        private readonly Dictionary<string, float> _byType = new Dictionary<string, float>();
+        private readonly Dictionary<int, Dictionary<string, float>> _byPidType = new Dictionary<int, Dictionary<string, float>>();
 
         public float Read()
         {
             if (!Available) return 0;
             try
             {
-                if ((DateTime.Now - _lastRebuild).TotalSeconds > 15) Rebuild();
-                var byType = new Dictionary<string, float>();
-                var byPidType = new Dictionary<int, Dictionary<string, float>>();
+                // recreate the (potentially hundreds of) counters only when the instance list changed
+                if ((DateTime.Now - _lastCheck).TotalSeconds > 15)
+                {
+                    _lastCheck = DateTime.Now;
+                    if (_cat == null) _cat = new PerformanceCounterCategory("GPU Engine");
+                    var names = _cat.GetInstanceNames();
+                    if (InstancesChanged(names, _instNames)) Rebuild(names);
+                }
+                var byType = _byType;
+                var byPidType = _byPidType;
+                byType.Clear();
+                byPidType.Clear();
                 foreach (var c in _counters)
                 {
                     float v;
@@ -465,12 +550,19 @@ namespace WinTotal
             }
         }
 
-        private void Rebuild()
+        internal static bool InstancesChanged(string[] names, HashSet<string> known)
+        {
+            if (names.Length != known.Count) return true;
+            foreach (var nm in names)
+                if (!known.Contains(nm)) return true;
+            return false;
+        }
+
+        private void Rebuild(string[] names)
         {
             foreach (var c in _counters) { try { c.Dispose(); } catch { } }
-            _counters = new List<PerformanceCounter>();
-            var cat = new PerformanceCounterCategory("GPU Engine");
-            foreach (var inst in cat.GetInstanceNames())
+            _counters.Clear();
+            foreach (var inst in names)
             {
                 try
                 {
@@ -480,7 +572,7 @@ namespace WinTotal
                 }
                 catch { }
             }
-            _lastRebuild = DateTime.Now;
+            _instNames = new HashSet<string>(names);
         }
     }
 
@@ -489,7 +581,10 @@ namespace WinTotal
     {
         private List<PerformanceCounter> _adapter = new List<PerformanceCounter>();
         private List<PerformanceCounter> _process = new List<PerformanceCounter>();
-        private DateTime _lastRebuild = DateTime.MinValue;
+        private PerformanceCounterCategory _adapterCat, _processCat;
+        private HashSet<string> _adapterNames = new HashSet<string>();
+        private HashSet<string> _processNames = new HashSet<string>();
+        private DateTime _lastCheck = DateTime.MinValue;
         public bool Available = true;
         public double TotalUsedBytes;
         public Dictionary<int, double> PidBytes = new Dictionary<int, double>();
@@ -499,7 +594,7 @@ namespace WinTotal
             if (!Available) return;
             try
             {
-                if ((DateTime.Now - _lastRebuild).TotalSeconds > 15) Rebuild();
+                if ((DateTime.Now - _lastCheck).TotalSeconds > 15) CheckRebuild();
                 double total = 0;
                 foreach (var c in _adapter)
                 {
@@ -532,43 +627,54 @@ namespace WinTotal
             return int.TryParse(inst.Substring(4, end - 4), out pid) ? pid : -1;
         }
 
-        private void Rebuild()
+        // recreate counters per category only when that category's instance list changed
+        private void CheckRebuild()
         {
-            foreach (var c in _adapter) { try { c.Dispose(); } catch { } }
-            foreach (var c in _process) { try { c.Dispose(); } catch { } }
-            _adapter = new List<PerformanceCounter>();
-            _process = new List<PerformanceCounter>();
+            _lastCheck = DateTime.Now;
             try
             {
-                var cat = new PerformanceCounterCategory("GPU Adapter Memory");
-                foreach (var inst in cat.GetInstanceNames())
+                if (_adapterCat == null) _adapterCat = new PerformanceCounterCategory("GPU Adapter Memory");
+                var names = _adapterCat.GetInstanceNames();
+                if (GpuMonitor.InstancesChanged(names, _adapterNames))
                 {
-                    try
+                    foreach (var c in _adapter) { try { c.Dispose(); } catch { } }
+                    _adapter.Clear();
+                    foreach (var inst in names)
                     {
-                        var pc = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", inst);
-                        pc.NextValue();
-                        _adapter.Add(pc);
+                        try
+                        {
+                            var pc = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", inst);
+                            pc.NextValue();
+                            _adapter.Add(pc);
+                        }
+                        catch { }
                     }
-                    catch { }
+                    _adapterNames = new HashSet<string>(names);
                 }
             }
             catch { }
             try
             {
-                var cat2 = new PerformanceCounterCategory("GPU Process Memory");
-                foreach (var inst in cat2.GetInstanceNames())
+                if (_processCat == null) _processCat = new PerformanceCounterCategory("GPU Process Memory");
+                var names2 = _processCat.GetInstanceNames();
+                if (GpuMonitor.InstancesChanged(names2, _processNames))
                 {
-                    try
+                    foreach (var c in _process) { try { c.Dispose(); } catch { } }
+                    _process.Clear();
+                    foreach (var inst in names2)
                     {
-                        var pc = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", inst);
-                        pc.NextValue();
-                        _process.Add(pc);
+                        try
+                        {
+                            var pc = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", inst);
+                            pc.NextValue();
+                            _process.Add(pc);
+                        }
+                        catch { }
                     }
-                    catch { }
+                    _processNames = new HashSet<string>(names2);
                 }
             }
             catch { }
-            _lastRebuild = DateTime.Now;
         }
     }
 
@@ -580,6 +686,7 @@ namespace WinTotal
         public float TempC, PowerW, PowerLimitW, ClockMhz, MemUsedMB, MemTotalMB;
         public string DriverVer = "", GpuName = "", ThrottleHex = "";
         private string _exe;
+        private readonly object _sync = new object(); // Tick and health check may refresh concurrently
 
         private string FindExe()
         {
@@ -599,6 +706,9 @@ namespace WinTotal
         public void Refresh()
         {
             if (!Available) return;
+            lock (_sync)
+            {
+            if (!Available) return;
             try
             {
                 if (_exe == null)
@@ -614,11 +724,13 @@ namespace WinTotal
                     RedirectStandardOutput = true,
                     CreateNoWindow = true
                 };
-                string line;
+                string line = null;
                 using (var p = Process.Start(psi))
                 {
-                    line = p.StandardOutput.ReadLine();
-                    p.WaitForExit(5000);
+                    // single-line output cannot fill the pipe, so waiting before reading is safe;
+                    // a hung nvidia-smi gets killed instead of blocking this thread forever
+                    if (p.WaitForExit(5000)) line = p.StandardOutput.ReadLine();
+                    else { try { p.Kill(); } catch { } }
                 }
                 if (string.IsNullOrEmpty(line)) { Available = false; return; }
                 var parts = line.Split(',');
@@ -635,6 +747,7 @@ namespace WinTotal
                 HasData = true;
             }
             catch { Available = false; }
+            }
         }
 
         private static float ParseF(string s)
@@ -692,8 +805,18 @@ namespace WinTotal
         private static extern ulong GetTickCount64();
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         private static extern int SHEmptyRecycleBin(IntPtr hwnd, string root, uint flags);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHQueryRecycleBin(string pszRootPath, ref SHQUERYRBINFO pSHQueryRBInfo);
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern bool GlobalMemoryStatusEx([In, Out] MemStatusEx buf);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SHQUERYRBINFO
+        {
+            public int cbSize;
+            public long i64Size;
+            public long i64NumItems;
+        }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private class MemStatusEx
@@ -715,9 +838,12 @@ namespace WinTotal
         private GpuMonitor _gpu = new GpuMonitor();
         private GpuMemMonitor _gpuMem = new GpuMemMonitor();
         private NvSmi _nv = new NvSmi();
-        private bool _nvBusy;
+        private volatile bool _nvBusy;
         private double _gpuUsageCache;
-        private bool _gpuSampleBusy;
+        private volatile bool _gpuSampleBusy;
+        private volatile bool _diskSubBusy;
+        private volatile bool _topProcsBusy;
+        private volatile int _procCount;
         private DispatcherTimer _timer;
         private int _tickCount;
 
@@ -727,8 +853,30 @@ namespace WinTotal
         private TextBlock _headerInfo, _clockTime, _clockDate;
         private string _infoLine, _gpuName;
 
-        // top-process tracking
-        private StackPanel _topCpuPanel, _topRamPanel, _topGpuPanel;
+        // top-process tracking — row UI is pooled and recycled every refresh (no per-tick rebuild)
+        private class TopRow
+        {
+            public Grid Root;
+            public TextBlock Name;
+            public TextBlock Value;
+            public Border Fill;
+            public Grid FillHost;
+            public double Ratio;
+            public bool Critical;
+            public Border KillBtn;
+            public TextBlock LockIcon;
+            public string ProcName; // read by the kill handler; updated on recycle
+        }
+        private class TopColumn
+        {
+            public StackPanel Panel;
+            public string Accent;
+            public List<TopRow> Rows = new List<TopRow>();
+            public UIElement GroupLabel;
+            public TextBlock Placeholder;
+        }
+        private TopColumn _colCpu, _colRam, _colGpu;
+        private static readonly FontFamily Mdl2Font = new FontFamily("Segoe MDL2 Assets");
         private Dictionary<int, double> _prevCpuMs = new Dictionary<int, double>();
         private DateTime _prevProcSample = DateTime.MinValue;
 
@@ -741,6 +889,8 @@ namespace WinTotal
         private TextBlock _appCountText, _statusText;
         private List<AppEntry> _apps = new List<AppEntry>();
         private bool _appsLoaded;
+        private volatile bool _appsLoading;
+        private int _rowBuildGen;
         private readonly int _startPage;
         private readonly string _startQuery;
 
@@ -764,7 +914,13 @@ namespace WinTotal
         private Grid _fixesPage;
         private Border _navFixes;
         private TextBox _fixConsole;
-        private bool _fixRunning;
+        private volatile bool _fixRunning;
+        private readonly TextBlock[] _fixStatusText = new TextBlock[4];
+        private readonly Ellipse[] _fixStatusDot = new Ellipse[4];
+        private readonly Border[] _fixRepairBtn = new Border[4];
+        private readonly object _fixLogLock = new object();
+        private readonly StringBuilder _fixLogBuf = new StringBuilder();
+        private bool _fixLogFlushQueued;
 
         private static readonly string[] ProtectedKeys = new string[]
         {
@@ -822,8 +978,15 @@ namespace WinTotal
                 string exe = Process.GetCurrentProcess().MainModule.FileName;
                 var ico = System.Drawing.Icon.ExtractAssociatedIcon(exe);
                 if (ico != null)
-                    Icon = Imaging.CreateBitmapSourceFromHIcon(ico.Handle, Int32Rect.Empty,
-                        System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                {
+                    // pixels are copied into the BitmapSource, so the GDI icon can be released immediately
+                    try
+                    {
+                        Icon = Imaging.CreateBitmapSourceFromHIcon(ico.Handle, Int32Rect.Empty,
+                            System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                    }
+                    finally { ico.Dispose(); }
+                }
             }
             catch { }
         }
@@ -947,7 +1110,7 @@ namespace WinTotal
             bottomInfo.Children.Add(langBtn);
             bottomInfo.Children.Add(new TextBlock
             {
-                Text = L.T("v1.4 · single executable"),
+                Text = L.T("v1.5 · single executable"),
                 FontSize = 10.5,
                 Foreground = Ui.Br(Theme.TextLow),
                 Margin = new Thickness(13, 0, 0, 0)
@@ -1166,9 +1329,9 @@ namespace WinTotal
             procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             procGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            _topCpuPanel = MakeTopColumn(procGrid, 0, L.T("Top CPU processes"), Theme.AccCpu);
-            _topGpuPanel = MakeTopColumn(procGrid, 2, L.T("Top GPU processes"), Theme.AccGpu);
-            _topRamPanel = MakeTopColumn(procGrid, 4, L.T("Top memory processes"), Theme.AccRam);
+            _colCpu = new TopColumn { Panel = MakeTopColumn(procGrid, 0, L.T("Top CPU processes"), Theme.AccCpu), Accent = Theme.AccCpu };
+            _colGpu = new TopColumn { Panel = MakeTopColumn(procGrid, 2, L.T("Top GPU processes"), Theme.AccGpu), Accent = Theme.AccGpu };
+            _colRam = new TopColumn { Panel = MakeTopColumn(procGrid, 4, L.T("Top memory processes"), Theme.AccRam), Accent = Theme.AccRam };
 
             procCard.Child = procGrid;
             Grid.SetRow(procCard, 3);
@@ -1214,25 +1377,25 @@ namespace WinTotal
             return listPanel;
         }
 
-        private UIElement ProcRow(string name, string valueText, double ratio, string accent)
+        private TopRow MakeTopRow(string accent)
         {
+            var row = new TopRow();
             var g = new Grid { Margin = new Thickness(15, 0, 0, 6), MinHeight = 16 };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
 
-            var nm = new TextBlock
+            row.Name = new TextBlock
             {
-                Text = name,
                 FontSize = 11.5,
                 Foreground = Ui.Br("#C9C9D1"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 10, 0)
             };
-            Grid.SetColumn(nm, 0);
-            g.Children.Add(nm);
+            Grid.SetColumn(row.Name, 0);
+            g.Children.Add(row.Name);
 
             var track = new Border
             {
@@ -1241,38 +1404,52 @@ namespace WinTotal
                 Background = Ui.Br("#1B1B20"),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            var fillHost = new Grid();
-            var c = Ui.Col(accent);
-            var fill = new Border
+            row.FillHost = new Grid();
+            row.Fill = new Border
             {
                 Height = 5,
                 CornerRadius = new CornerRadius(2.5),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Background = new SolidColorBrush(c),
+                Background = Ui.Br(accent),
                 Width = 0
             };
-            fillHost.Children.Add(track);
-            fillHost.Children.Add(fill);
-            fillHost.SizeChanged += delegate
+            row.FillHost.Children.Add(track);
+            row.FillHost.Children.Add(row.Fill);
+            var holder = row;
+            row.FillHost.SizeChanged += delegate
             {
-                fill.Width = Math.Max(0, Math.Min(1, ratio)) * fillHost.ActualWidth;
+                holder.Fill.Width = Math.Max(0, Math.Min(1, holder.Ratio)) * holder.FillHost.ActualWidth;
             };
-            Grid.SetColumn(fillHost, 1);
-            g.Children.Add(fillHost);
+            Grid.SetColumn(row.FillHost, 1);
+            g.Children.Add(row.FillHost);
 
-            var val = new TextBlock
+            row.Value = new TextBlock
             {
-                Text = valueText,
                 FontSize = 11,
                 Foreground = Ui.Br(Theme.TextMid),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Grid.SetColumn(val, 2);
-            g.Children.Add(val);
+            Grid.SetColumn(row.Value, 2);
+            g.Children.Add(row.Value);
 
-            // graceful-close button (X)
-            var killBtn = new Border
+            // column 3 holds both the lock icon and the X button; visibility picks one
+            row.LockIcon = new TextBlock
+            {
+                Text = ((char)0xE72E).ToString(), // MDL2 Lock
+                FontFamily = Mdl2Font,
+                FontSize = 10,
+                Foreground = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(6, 0, 5, 0),
+                ToolTip = L.T("Protected system process — cannot be closed"),
+                Visibility = Visibility.Collapsed
+            };
+            Grid.SetColumn(row.LockIcon, 3);
+            g.Children.Add(row.LockIcon);
+
+            row.KillBtn = new Border
             {
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(5, 3, 5, 3),
@@ -1286,26 +1463,43 @@ namespace WinTotal
             var killGlyph = new TextBlock
             {
                 Text = ((char)0xE711).ToString(), // MDL2 Cancel(X)
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontFamily = Mdl2Font,
                 FontSize = 10,
                 Foreground = Ui.Br(Theme.TextLow)
             };
-            killBtn.Child = killGlyph;
-            killBtn.MouseEnter += delegate
+            row.KillBtn.Child = killGlyph;
+            row.KillBtn.MouseEnter += delegate
             {
-                killBtn.Background = Ui.Br(Theme.DangerBg);
+                holder.KillBtn.Background = Ui.Br(Theme.DangerBg);
                 killGlyph.Foreground = Ui.Br(Theme.DangerText);
             };
-            killBtn.MouseLeave += delegate
+            row.KillBtn.MouseLeave += delegate
             {
-                killBtn.Background = Brushes.Transparent;
+                holder.KillBtn.Background = Brushes.Transparent;
                 killGlyph.Foreground = Ui.Br(Theme.TextLow);
             };
-            string procName = name;
-            killBtn.MouseLeftButtonUp += delegate { SafeKill(procName); };
-            Grid.SetColumn(killBtn, 3);
-            g.Children.Add(killBtn);
-            return g;
+            row.KillBtn.MouseLeftButtonUp += delegate { SafeKill(holder.ProcName); };
+            Grid.SetColumn(row.KillBtn, 3);
+            g.Children.Add(row.KillBtn);
+
+            row.Root = g;
+            row.Critical = false;
+            return row;
+        }
+
+        private void UpdateTopRow(TopRow row, string name, string valueText, double ratio, bool critical)
+        {
+            row.ProcName = name;
+            if (row.Name.Text != name) row.Name.Text = name;
+            if (row.Value.Text != valueText) row.Value.Text = valueText;
+            row.Ratio = ratio;
+            row.Fill.Width = Math.Max(0, Math.Min(1, ratio)) * row.FillHost.ActualWidth;
+            if (row.Critical != critical)
+            {
+                row.Critical = critical;
+                row.KillBtn.Visibility = critical ? Visibility.Collapsed : Visibility.Visible;
+                row.LockIcon.Visibility = critical ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
 
         // ---------- Graceful close: close request → 5s wait → confirmed force kill ----------
@@ -1315,20 +1509,43 @@ namespace WinTotal
             "services", "smss", "svchost", "dwm", "fontdrvhost", "registry",
             "memory compression", "memcompression", "runtimebroker", "sihost",
             "taskhostw", "ctfmon", "explorer", "audiodg", "conhost",
-            "wintotal", "wintotal_dbg"
+            "msmpeng", "securityhealthservice", "lsaiso", "sgrmbroker",
+            "vmmem", "vmmemwsl"
         };
 
-        private void SafeKill(string procName)
+        private static readonly string SelfProcName = Process.GetCurrentProcess().ProcessName;
+
+        // true Windows system processes — shown under "시스템 · 종료 불가" without the X button
+        private static bool IsSystemProc(string procName)
         {
             string low = procName.ToLowerInvariant();
             foreach (var c in CriticalProcs)
-                if (low == c)
-                {
-                    MessageBox.Show(this,
-                        string.Format(L.T("\"{0}\" is a critical Windows process and cannot be terminated."), procName),
-                        L.T("Graceful Close"), MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
+                if (low == c) return true;
+            return false;
+        }
+
+        // this running instance itself — X closes the app instead of the kill flow
+        private static bool IsSelf(string procName)
+        {
+            return string.Equals(procName, SelfProcName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void SafeKill(string procName)
+        {
+            if (IsSelf(procName))
+            {
+                if (MessageBox.Show(this, L.T("Close WinTotal (this app)?"),
+                    L.T("Graceful Close"), MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    Close();
+                return;
+            }
+            if (IsSystemProc(procName))
+            {
+                MessageBox.Show(this,
+                    string.Format(L.T("\"{0}\" is a critical Windows process and cannot be terminated."), procName),
+                    L.T("Graceful Close"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             if (MessageBox.Show(this,
                 string.Format(L.T("Close \"{0}\" gracefully?\n\nStep 1 — a close request is sent (the app may ask you to save)\nStep 2 — if still running after 5 seconds, you will be asked to force kill"), procName),
@@ -1394,7 +1611,21 @@ namespace WinTotal
             });
         }
 
+        // full-system process enumeration opens a handle per process and can take
+        // hundreds of ms with many processes — never run it on the UI thread
         private void UpdateTopProcs()
+        {
+            if (_topProcsBusy) return;
+            _topProcsBusy = true;
+            Task.Run(delegate
+            {
+                try { ComputeTopProcs(); }
+                catch { }
+                finally { _topProcsBusy = false; }
+            });
+        }
+
+        private void ComputeTopProcs()
         {
             var now = DateTime.UtcNow;
             double elapsedMs = _prevProcSample == DateTime.MinValue
@@ -1406,6 +1637,7 @@ namespace WinTotal
             var agg = new Dictionary<string, double[]>();
             Process[] procs;
             try { procs = Process.GetProcesses(); } catch { return; }
+            _procCount = procs.Length;
             foreach (var p in procs)
             {
                 string name;
@@ -1442,31 +1674,34 @@ namespace WinTotal
             var topCpu = agg.OrderByDescending(kv => kv.Value[0]).Take(5).ToList();
             var topRam = agg.OrderByDescending(kv => kv.Value[1]).Take(5).ToList();
 
-            _topCpuPanel.Children.Clear();
             double maxCpu = 0.01;
             foreach (var kv in topCpu) maxCpu = Math.Max(maxCpu, kv.Value[0] / denom * 100.0);
+            var cpuRows = new List<Tuple<string, string, double, bool>>();
             foreach (var kv in topCpu)
             {
                 double pct = kv.Value[0] / denom * 100.0;
-                _topCpuPanel.Children.Add(ProcRow(kv.Key,
-                    string.Format("{0:F1}%", pct), pct / maxCpu, Theme.AccCpu));
+                cpuRows.Add(Tuple.Create(kv.Key, string.Format("{0:F1}%", pct), pct / maxCpu, false));
             }
 
-            _topRamPanel.Children.Clear();
             double maxRam = 1;
             foreach (var kv in topRam) maxRam = Math.Max(maxRam, kv.Value[1]);
+            var ramRows = new List<Tuple<string, string, double, bool>>();
             foreach (var kv in topRam)
             {
                 double mb = kv.Value[1] / 1048576.0;
                 string txt = mb >= 1024
                     ? string.Format("{0:F1} GB", mb / 1024.0)
                     : string.Format("{0:F0} MB", mb);
-                _topRamPanel.Children.Add(ProcRow(kv.Key, txt, kv.Value[1] / maxRam, Theme.AccRam));
+                ramRows.Add(Tuple.Create(kv.Key, txt, kv.Value[1] / maxRam, false));
             }
 
             // Top GPU processes (usage % from GPU Engine, VRAM from GPU Process Memory)
+            // snapshot the dictionaries: the GPU sampler swaps in fresh instances, so a
+            // local reference is always internally consistent
+            var pidUsageSnap = _gpu.PidUsage;
+            var pidBytesSnap = _gpuMem.PidBytes;
             var gpuAgg = new Dictionary<string, double[]>(); // name → [usage %, vram bytes]
-            foreach (var kv in _gpu.PidUsage)
+            foreach (var kv in pidUsageSnap)
             {
                 string nm;
                 if (!pidName.TryGetValue(kv.Key, out nm)) continue;
@@ -1474,7 +1709,7 @@ namespace WinTotal
                 if (!gpuAgg.TryGetValue(nm, out slot)) { slot = new double[2]; gpuAgg[nm] = slot; }
                 slot[0] += kv.Value;
             }
-            foreach (var kv in _gpuMem.PidBytes)
+            foreach (var kv in pidBytesSnap)
             {
                 string nm;
                 if (!pidName.TryGetValue(kv.Key, out nm)) continue;
@@ -1486,29 +1721,98 @@ namespace WinTotal
                                .OrderByDescending(kv => kv.Value[0])
                                .ThenByDescending(kv => kv.Value[1])
                                .Take(5).ToList();
-            _topGpuPanel.Children.Clear();
-            if (topGpu.Count == 0)
+            var gpuRows = new List<Tuple<string, string, double, bool>>();
+            double maxG = 0.01;
+            foreach (var kv in topGpu) maxG = Math.Max(maxG, kv.Value[0]);
+            foreach (var kv in topGpu)
             {
-                _topGpuPanel.Children.Add(new TextBlock
+                string gtxt = kv.Value[1] > 0
+                    ? string.Format("{0:F0}% · {1:F1} GB", kv.Value[0], kv.Value[1] / 1073741824.0)
+                    : string.Format("{0:F0}%", kv.Value[0]);
+                gpuRows.Add(Tuple.Create(kv.Key, gtxt, Math.Min(1.0, kv.Value[0] / maxG), false));
+            }
+
+            var cpuOrdered = SplitBySystem(cpuRows);
+            var ramOrdered = SplitBySystem(ramRows);
+            var gpuOrdered = SplitBySystem(gpuRows);
+
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if (_colCpu == null) return;
+                FillTopColumn(_colCpu, cpuOrdered);
+                FillTopColumn(_colRam, ramOrdered);
+                if (gpuOrdered.Count == 0) ShowGpuPlaceholder();
+                else FillTopColumn(_colGpu, gpuOrdered);
+            }));
+        }
+
+        // closable rows first, then the "system · cannot close" group (Item4 = system)
+        private static List<Tuple<string, string, double, bool>> SplitBySystem(List<Tuple<string, string, double, bool>> rows)
+        {
+            var ordered = new List<Tuple<string, string, double, bool>>(rows.Count);
+            foreach (var r in rows)
+                if (!IsSystemProc(r.Item1)) ordered.Add(r);
+            foreach (var r in rows)
+                if (IsSystemProc(r.Item1)) ordered.Add(Tuple.Create(r.Item1, r.Item2, r.Item3, true));
+            return ordered;
+        }
+
+        private void FillTopColumn(TopColumn col, List<Tuple<string, string, double, bool>> ordered)
+        {
+            var panel = col.Panel;
+            panel.Children.Clear();
+            bool labelAdded = false;
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                var r = ordered[i];
+                if (r.Item4 && !labelAdded)
+                {
+                    if (col.GroupLabel == null) col.GroupLabel = SystemGroupLabel();
+                    panel.Children.Add(col.GroupLabel);
+                    labelAdded = true;
+                }
+                if (i >= col.Rows.Count) col.Rows.Add(MakeTopRow(col.Accent));
+                var row = col.Rows[i];
+                UpdateTopRow(row, r.Item1, r.Item2, r.Item3, r.Item4);
+                panel.Children.Add(row.Root);
+            }
+        }
+
+        private void ShowGpuPlaceholder()
+        {
+            var panel = _colGpu.Panel;
+            panel.Children.Clear();
+            if (_colGpu.Placeholder == null)
+                _colGpu.Placeholder = new TextBlock
                 {
                     Text = L.T("No active GPU processes"),
                     FontSize = 11.5,
                     Foreground = Ui.Br(Theme.TextLow),
                     Margin = new Thickness(15, 2, 0, 2)
-                });
-            }
-            else
+                };
+            panel.Children.Add(_colGpu.Placeholder);
+        }
+
+        private UIElement SystemGroupLabel()
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(15, 3, 0, 5) };
+            row.Children.Add(new TextBlock
             {
-                double maxG = 0.01;
-                foreach (var kv in topGpu) maxG = Math.Max(maxG, kv.Value[0]);
-                foreach (var kv in topGpu)
-                {
-                    string gtxt = kv.Value[1] > 0
-                        ? string.Format("{0:F0}% · {1:F1} GB", kv.Value[0], kv.Value[1] / 1073741824.0)
-                        : string.Format("{0:F0}%", kv.Value[0]);
-                    _topGpuPanel.Children.Add(ProcRow(kv.Key, gtxt, Math.Min(1.0, kv.Value[0] / maxG), Theme.AccGpu));
-                }
-            }
+                Text = ((char)0xE72E).ToString(), // MDL2 Lock
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 9,
+                Foreground = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 1, 6, 0)
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = L.T("System · cannot close"),
+                FontSize = 10,
+                Foreground = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            return row;
         }
 
         private Border MakeCard(string title, string hex, out TextBlock big, out TextBlock sub, out LineChart chart)
@@ -1576,34 +1880,45 @@ namespace WinTotal
             return card;
         }
 
+        // the two Runs are created once (kept in Tag) and only their Text is updated each tick
         private static void SetBigValue(TextBlock tb, string num, string unit)
         {
-            tb.Inlines.Clear();
-            var r1 = new Run(num)
+            var runs = tb.Tag as Run[];
+            if (runs == null)
             {
-                FontSize = 38,
-                FontWeight = FontWeights.Bold,
-                Foreground = Brushes.White
-            };
-            tb.Inlines.Add(r1);
-            if (!string.IsNullOrEmpty(unit))
-            {
-                var r2 = new Run(unit)
+                var r1 = new Run(num)
+                {
+                    FontSize = 38,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White
+                };
+                var r2 = new Run(unit ?? "")
                 {
                     FontSize = 18,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = Ui.Br(Theme.TextLow)
                 };
+                tb.Inlines.Add(r1);
                 tb.Inlines.Add(r2);
+                tb.Tag = new Run[] { r1, r2 };
+                return;
             }
+            if (runs[0].Text != num) runs[0].Text = num;
+            string u = unit ?? "";
+            if (runs[1].Text != u) runs[1].Text = u;
         }
 
         private void StartMonitoring()
         {
-            try { _cpu = new PerformanceCounter("Processor", "% Processor Time", "_Total"); _cpu.NextValue(); }
-            catch { _cpu = null; }
-            try { _disk = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total"); _disk.NextValue(); }
-            catch { _disk = null; }
+            // counter-catalog first load can block for seconds — create off the UI thread
+            // (Tick null-guards _cpu/_disk until they are ready)
+            Task.Run(delegate
+            {
+                try { var pc = new PerformanceCounter("Processor", "% Processor Time", "_Total"); pc.NextValue(); _cpu = pc; }
+                catch { _cpu = null; }
+                try { var pd = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total"); pd.NextValue(); _disk = pd; }
+                catch { _disk = null; }
+            });
 
             // system info (background)
             Task.Run(delegate
@@ -1650,12 +1965,21 @@ namespace WinTotal
             _timer.Tick += delegate { Tick(); };
             _timer.Start();
 
+            // Tick skips UI work while minimized; refresh immediately on restore
+            StateChanged += delegate
+            {
+                if (WindowState != WindowState.Minimized && _timer != null) Tick();
+            };
+
             RunHealthCheck(); // initial diagnosis; re-runs every 10 minutes from Tick
         }
 
         private void Tick()
         {
             _tickCount++;
+
+            // nothing is rendered while minimized — skip the whole UI pass
+            if (WindowState == WindowState.Minimized) return;
 
             _clockTime.Text = DateTime.Now.ToString("HH:mm:ss");
             if (_tickCount % 30 == 1)
@@ -1671,9 +1995,13 @@ namespace WinTotal
                 if (_infoLine != null) _headerInfo.Text = _infoLine;
                 try
                 {
-                    var up = TimeSpan.FromMilliseconds(GetTickCount64());
-                    _cpuSub.Text = string.Format(L.T("{0} processes · up {1}d {2}h {3}m"),
-                        Process.GetProcesses().Length, up.Days, up.Hours, up.Minutes);
+                    // process count is cached by the top-process aggregation (no extra full enumeration)
+                    if (_procCount > 0)
+                    {
+                        var up = TimeSpan.FromMilliseconds(GetTickCount64());
+                        _cpuSub.Text = string.Format(L.T("{0} processes · up {1}d {2}h {3}m"),
+                            _procCount, up.Days, up.Hours, up.Minutes);
+                    }
                 }
                 catch { }
             }
@@ -1731,20 +2059,34 @@ namespace WinTotal
             if (_tickCount % 600 == 0) RunHealthCheck();
         }
 
+        // background + DriveType checked before IsReady: a disconnected network drive's
+        // IsReady can block for seconds on SMB timeouts, and must never stall the UI thread
         private void UpdateDiskSub()
         {
-            try
+            if (_diskSubBusy) return;
+            _diskSubBusy = true;
+            Task.Run(delegate
             {
-                var sb = new StringBuilder();
-                foreach (var d in DriveInfo.GetDrives())
+                string txt = null;
+                try
                 {
-                    if (!d.IsReady || d.DriveType != DriveType.Fixed) continue;
-                    if (sb.Length > 0) sb.Append("   ");
-                    sb.AppendFormat(L.T("{0} {1:F0} GB free"), d.Name.TrimEnd('\\'), d.AvailableFreeSpace / 1073741824.0);
+                    var sb = new StringBuilder();
+                    foreach (var d in DriveInfo.GetDrives())
+                    {
+                        if (d.DriveType != DriveType.Fixed || !d.IsReady) continue;
+                        if (sb.Length > 0) sb.Append("   ");
+                        sb.AppendFormat(L.T("{0} {1:F0} GB free"), d.Name.TrimEnd('\\'), d.AvailableFreeSpace / 1073741824.0);
+                    }
+                    txt = sb.ToString();
                 }
-                _diskSub.Text = sb.ToString();
-            }
-            catch { }
+                catch { }
+                _diskSubBusy = false;
+                if (txt != null)
+                {
+                    string done = txt;
+                    Dispatcher.BeginInvoke(new Action(delegate { _diskSub.Text = done; }));
+                }
+            });
         }
 
         // ================= System specs =================
@@ -1941,7 +2283,7 @@ namespace WinTotal
                 using (var s = new ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem"))
                     foreach (ManagementObject mo in s.Get())
                     {
-                        sys.Rows.Add(new[] { L.T("Manufacturer · Model"), (WmiStr(mo, "Manufacturer") + "  " + WmiStr(mo, L.T("Model"))).Trim() });
+                        sys.Rows.Add(new[] { L.T("Manufacturer · Model"), (WmiStr(mo, "Manufacturer") + "  " + WmiStr(mo, "Model")).Trim() });
                         break;
                     }
             }
@@ -2134,7 +2476,7 @@ namespace WinTotal
                             di++;
                             double sz = 0;
                             double.TryParse(WmiStr(mo, "Size"), out sz);
-                            disk.Rows.Add(new[] { L.T("Disk ") + di, string.Format("{0} · {1:F0} GB", WmiStr(mo, L.T("Model")), sz / 1000000000.0) });
+                            disk.Rows.Add(new[] { L.T("Disk ") + di, string.Format("{0} · {1:F0} GB", WmiStr(mo, "Model"), sz / 1000000000.0) });
                         }
                     }
                 }
@@ -2377,7 +2719,7 @@ namespace WinTotal
 
             _healthSummary = new TextBlock
             {
-                Text = L.T("Checking..."),
+                Text = L.T("Diagnosing..."),
                 FontSize = 12.5,
                 Foreground = Brushes.White,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -2504,7 +2846,7 @@ namespace WinTotal
         {
             if (_healthRunning || _healthSummary == null) return;
             _healthRunning = true;
-            _healthStatus.Text = L.T("Checking...");
+            _healthStatus.Text = L.T("Diagnosing...");
             Task.Run<List<HealthSection>>(new Func<List<HealthSection>>(CollectHealth)).ContinueWith(t =>
             {
                 Dispatcher.BeginInvoke(new Action(delegate
@@ -2816,11 +3158,22 @@ namespace WinTotal
             });
             headLeft.Children.Add(new TextBlock
             {
-                Text = L.T("One-click repairs for common Windows problems"),
+                Text = L.T("Check first, then repair only if needed — for common Windows problems"),
                 FontSize = 11.5,
                 Foreground = Ui.Br(Theme.TextLow),
                 Margin = new Thickness(1, 5, 0, 0)
             });
+            if (!IsAdmin())
+            {
+                headLeft.Children.Add(new TextBlock
+                {
+                    Text = L.T("Not running as administrator — network reset, system file repair and Windows Temp cleanup may fail."),
+                    FontSize = 11,
+                    Foreground = Ui.Br(Theme.AccDisk),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(1, 4, 0, 0)
+                });
+            }
             Grid.SetColumn(headLeft, 0);
             head.Children.Add(headLeft);
 
@@ -2904,17 +3257,63 @@ namespace WinTotal
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 0)
             });
+
+            // check-result row (dot + status text)
+            var statusRow = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+            statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _fixStatusDot[id] = new Ellipse
+            {
+                Width = 7, Height = 7,
+                Fill = Ui.Br(Theme.TextLow),
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 3, 7, 0)
+            };
+            Grid.SetColumn(_fixStatusDot[id], 0);
+            statusRow.Children.Add(_fixStatusDot[id]);
+            _fixStatusText[id] = new TextBlock
+            {
+                Text = L.T("Not checked yet"),
+                FontSize = 11,
+                Foreground = Ui.Br(Theme.TextLow),
+                TextWrapping = TextWrapping.Wrap
+            };
+            Grid.SetColumn(_fixStatusText[id], 1);
+            statusRow.Children.Add(_fixStatusText[id]);
+            left.Children.Add(statusRow);
+
             Grid.SetColumn(left, 0);
             g.Children.Add(left);
             var localTitle = title;
             var localDesc = desc;
-            var btn = PillButton(null, L.T("Run"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
+            var btns = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var checkBtn = PillButton(null, L.T("Check"), Theme.BtnBg, Theme.BtnHover, Theme.BtnText,
+                delegate { CheckFix(id, localTitle); });
+            btns.Children.Add(checkBtn);
+            _fixRepairBtn[id] = PillButton(null, L.T("Run"), Theme.DangerBg, Theme.DangerHover, Theme.DangerText,
                 delegate { RunFix(id, localTitle, localDesc); });
-            btn.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(btn, 1);
-            g.Children.Add(btn);
+            _fixRepairBtn[id].Margin = new Thickness(0, 8, 0, 0);
+            _fixRepairBtn[id].Visibility = Visibility.Collapsed; // revealed after a check
+            btns.Children.Add(_fixRepairBtn[id]);
+            Grid.SetColumn(btns, 1);
+            g.Children.Add(btns);
             card.Child = g;
             return card;
+        }
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (_fixRunning)
+            {
+                if (MessageBox.Show(this,
+                    L.T("A repair is still running. Quit anyway?\n(The running command will continue in the background.)"),
+                    "WinTotal", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+            base.OnClosing(e);
         }
 
         private void OpenTerminal()
@@ -2933,17 +3332,37 @@ namespace WinTotal
             }
         }
 
+        // buffered console log: bursts of output coalesce into one dispatcher pass,
+        // and the console text is capped so long runs (sfc etc.) cannot grow memory unbounded
         private void FixLog(string line)
         {
-            Dispatcher.BeginInvoke(new Action(delegate
+            lock (_fixLogLock)
             {
-                if (_fixConsole == null) return;
-                _fixConsole.AppendText(line + Environment.NewLine);
-                _fixConsole.ScrollToEnd();
-            }));
+                _fixLogBuf.AppendLine(line);
+                if (_fixLogFlushQueued) return;
+                _fixLogFlushQueued = true;
+            }
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FlushFixLog));
         }
 
-        private int RunCmdStep(string file, string args, bool unicodeOut)
+        private void FlushFixLog()
+        {
+            string chunk;
+            lock (_fixLogLock)
+            {
+                chunk = _fixLogBuf.ToString();
+                _fixLogBuf.Length = 0;
+                _fixLogFlushQueued = false;
+            }
+            if (_fixConsole == null || chunk.Length == 0) return;
+            if (_fixConsole.Text.Length > 120000)
+                _fixConsole.Text = _fixConsole.Text.Substring(_fixConsole.Text.Length - 60000);
+            _fixConsole.AppendText(chunk);
+            _fixConsole.ScrollToEnd();
+        }
+
+        private int RunCmdStep(string file, string args, bool unicodeOut, List<string> capture = null,
+            int timeoutMs = 3600000)
         {
             FixLog("> " + file + " " + args);
             try
@@ -2962,7 +3381,11 @@ namespace WinTotal
                 {
                     p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
                     {
-                        if (!string.IsNullOrEmpty(e.Data) && e.Data.Trim().Length > 0) FixLog("  " + e.Data.Trim());
+                        if (!string.IsNullOrEmpty(e.Data) && e.Data.Trim().Length > 0)
+                        {
+                            FixLog("  " + e.Data.Trim());
+                            if (capture != null) lock (capture) capture.Add(e.Data.Trim());
+                        }
                     };
                     p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
                     {
@@ -2970,38 +3393,288 @@ namespace WinTotal
                     };
                     p.BeginOutputReadLine();
                     p.BeginErrorReadLine();
-                    p.WaitForExit();
+                    // bounded wait: a hung command must never lock the repair page forever
+                    if (!p.WaitForExit(timeoutMs))
+                    {
+                        try { p.Kill(); } catch { }
+                        FixLog("  " + L.T("Command timed out and was stopped."));
+                        return -2;
+                    }
+                    p.WaitForExit(); // flush remaining async output events
                     return p.ExitCode;
                 }
             }
             catch (Exception ex)
             {
-                FixLog("  ERROR: " + ex.Message);
+                FixLog("  " + L.T("ERROR: ") + ex.Message);
                 return -1;
             }
         }
 
+        // EnumerateFiles/EnumerateDirectories keep memory flat even with tens of thousands of temp files
         private double CleanTempDir(string dir)
         {
             double freed = 0;
+            long count = 0;
             try
             {
                 var di = new DirectoryInfo(dir);
                 if (!di.Exists) return 0;
-                foreach (var fi in di.GetFiles())
-                {
-                    try { double len = fi.Length; fi.Delete(); freed += len; }
-                    catch { }
-                }
-                foreach (var sub in di.GetDirectories())
-                {
-                    try { sub.Delete(true); }
-                    catch { }
-                }
+                CleanDirRec(di, true, ref freed, ref count);
                 FixLog(string.Format("  {0} — {1:F0} MB", dir, freed / 1048576.0));
             }
             catch { }
             return freed;
+        }
+
+        private void CleanDirRec(DirectoryInfo di, bool isRoot, ref double freed, ref long count)
+        {
+            try
+            {
+                foreach (var fi in di.EnumerateFiles())
+                {
+                    try
+                    {
+                        double len = fi.Length;
+                        fi.Delete();
+                        freed += len;
+                        count++;
+                        if (count % 2000 == 0) FixLog("  " + string.Format(L.T("{0} files deleted..."), count));
+                    }
+                    catch { }
+                }
+                foreach (var sub in di.EnumerateDirectories())
+                {
+                    try
+                    {
+                        // never descend into junctions/symlinks — their targets live outside the temp dir
+                        if ((sub.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            try { sub.Delete(false); } catch { }
+                            continue;
+                        }
+                        CleanDirRec(sub, false, ref freed, ref count);
+                    }
+                    catch { }
+                }
+                if (!isRoot)
+                {
+                    try { di.Delete(false); } catch { } // only removes now-empty folders
+                }
+            }
+            catch { }
+        }
+
+        private static long DirSizeSafe(string dir, ref long fileCount)
+        {
+            long total = 0;
+            try
+            {
+                var di = new DirectoryInfo(dir);
+                if (!di.Exists) return 0;
+                foreach (var fi in di.EnumerateFiles())
+                {
+                    try { total += fi.Length; fileCount++; }
+                    catch { }
+                }
+                foreach (var sub in di.EnumerateDirectories())
+                {
+                    try
+                    {
+                        if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        total += DirSizeSafe(sub.FullName, ref fileCount);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return total;
+        }
+
+        private static string FmtBytes(long bytes)
+        {
+            double mb = bytes / 1048576.0;
+            if (mb >= 1024) return string.Format("{0:F1} GB", mb / 1024.0);
+            if (mb >= 1) return string.Format("{0:F0} MB", mb);
+            return string.Format("{0:F0} KB", bytes / 1024.0);
+        }
+
+        private static bool IsAdmin()
+        {
+            try
+            {
+                return new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
+                    .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch { return false; }
+        }
+
+        // ---------- Check (read-only diagnosis) → repair flow ----------
+        private void SetFixResult(int id, string dotColor, string statusText)
+        {
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if (_fixStatusDot[id] == null || _fixStatusText[id] == null) return;
+                _fixStatusDot[id].Fill = Ui.Br(dotColor);
+                _fixStatusText[id].Text = statusText;
+                _fixStatusText[id].Foreground = Ui.Br(Theme.TextMid);
+                if (_fixRepairBtn[id] != null) _fixRepairBtn[id].Visibility = Visibility.Visible;
+            }));
+        }
+
+        private void CheckFix(int id, string title)
+        {
+            if (_fixRunning)
+            {
+                MessageBox.Show(this, L.T("Another fix is already running."), "WinTotal",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _fixRunning = true;
+            _fixStatusDot[id].Fill = Ui.Br(Theme.TextLow);
+            _fixStatusText[id].Text = L.T("Checking...");
+            _fixStatusText[id].Foreground = Ui.Br(Theme.TextLow);
+            FixLog("");
+            FixLog("═══ " + L.T("Check") + ": " + title + " ═══");
+            Task.Run(delegate
+            {
+                try
+                {
+                    switch (id)
+                    {
+                        case 0: CheckNetwork(id); break;
+                        case 1: CheckDiskSpace(id); break;
+                        case 2: CheckSystemFiles(id); break;
+                        case 3: CheckExplorer(id); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FixLog("  " + L.T("ERROR: ") + ex.Message);
+                    SetFixResult(id, Theme.AccDisk, L.T("Check inconclusive — you can still run the repair"));
+                }
+                finally
+                {
+                    FixLog(L.T("Done."));
+                    _fixRunning = false;
+                }
+            });
+        }
+
+        private void CheckNetwork(int id)
+        {
+            bool net = false, ping = false, dns = false;
+            try { net = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable(); }
+            catch { }
+            if (net)
+            {
+                try
+                {
+                    using (var pi = new System.Net.NetworkInformation.Ping())
+                    {
+                        var rep = pi.Send("8.8.8.8", 2000);
+                        ping = rep != null && rep.Status == System.Net.NetworkInformation.IPStatus.Success;
+                        if (ping) FixLog("  " + string.Format(L.T("ping 8.8.8.8: OK ({0} ms)"), rep.RoundtripTime));
+                    }
+                }
+                catch { }
+                if (!ping) FixLog("  " + L.T("ping 8.8.8.8: failed"));
+                try
+                {
+                    var ar = System.Net.Dns.BeginGetHostAddresses("www.microsoft.com", null, null);
+                    if (ar.AsyncWaitHandle.WaitOne(3000))
+                        dns = System.Net.Dns.EndGetHostAddresses(ar).Length > 0;
+                }
+                catch { }
+                FixLog("  " + L.T(dns ? "DNS lookup: OK" : "DNS lookup: failed"));
+            }
+            if (!net)
+                SetFixResult(id, Theme.DangerText, L.T("No network connection — check the adapter, then run repair"));
+            else if (ping && dns)
+                SetFixResult(id, Theme.AccRam, L.T("Network OK — repair not needed"));
+            else
+                SetFixResult(id, Theme.AccDisk, L.T("Connection problems detected — repair recommended"));
+        }
+
+        private void CheckDiskSpace(int id)
+        {
+            long files = 0;
+            long tempBytes = DirSizeSafe(System.IO.Path.GetTempPath(), ref files)
+                           + DirSizeSafe(System.IO.Path.Combine(
+                                 Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp"), ref files);
+            long rbBytes = 0, rbItems = 0;
+            try
+            {
+                var q = new SHQUERYRBINFO();
+                q.cbSize = Marshal.SizeOf(typeof(SHQUERYRBINFO));
+                if (SHQueryRecycleBin(null, ref q) == 0) { rbBytes = q.i64Size; rbItems = q.i64NumItems; }
+            }
+            catch { }
+            FixLog("  " + string.Format(L.T("Temp files: {0} ({1} files)"), FmtBytes(tempBytes), files));
+            FixLog("  " + string.Format(L.T("Recycle Bin: {0} ({1} items)"), FmtBytes(rbBytes), rbItems));
+            long total = tempBytes + rbBytes;
+            if (total < 50L * 1048576)
+                SetFixResult(id, Theme.AccRam, string.Format(L.T("Nothing significant to clean (about {0})"), FmtBytes(total)));
+            else
+                SetFixResult(id, Theme.AccDisk, string.Format(
+                    L.T("About {0} can be freed — temp files {1} · Recycle Bin {2}"),
+                    FmtBytes(total), FmtBytes(tempBytes), FmtBytes(rbBytes)));
+        }
+
+        private void CheckSystemFiles(int id)
+        {
+            if (!IsAdmin())
+            {
+                FixLog("  " + L.T("Administrator rights are required for this check."));
+                SetFixResult(id, Theme.AccDisk, L.T("Administrator rights are required for this check."));
+                return;
+            }
+            // ImageHealthState enum values are invariant English even on localized Windows
+            var lines = new List<string>();
+            int code = RunCmdStep("powershell",
+                "-NoProfile -ExecutionPolicy Bypass -Command \"(Repair-WindowsImage -Online -CheckHealth).ImageHealthState\"",
+                false, lines);
+            string state = null;
+            lock (lines)
+            {
+                foreach (var ln in lines)
+                {
+                    var t = ln.Trim();
+                    if (t == "Healthy" || t == "Repairable" || t == "NonRepairable") { state = t; break; }
+                }
+            }
+            if (state != null) FixLog("  " + string.Format(L.T("Component store status: {0}"), state));
+            if (code == 0 && state == "Healthy")
+                SetFixResult(id, Theme.AccRam, L.T("No system file corruption detected — repair not needed"));
+            else if (state == "Repairable" || state == "NonRepairable")
+                SetFixResult(id, Theme.DangerText, L.T("Corruption detected — repair is recommended"));
+            else
+                SetFixResult(id, Theme.AccDisk, L.T("Check inconclusive — you can still run the repair"));
+        }
+
+        private void CheckExplorer(int id)
+        {
+            int count = 0;
+            bool hung = false;
+            try
+            {
+                var ps = Process.GetProcessesByName("explorer");
+                count = ps.Length;
+                foreach (var p in ps)
+                {
+                    try { if (!p.Responding) hung = true; }
+                    catch { }
+                    finally { try { p.Dispose(); } catch { } }
+                }
+            }
+            catch { }
+            string msg;
+            string color;
+            if (count == 0) { msg = L.T("Explorer is not running — restart needed"); color = Theme.DangerText; }
+            else if (hung) { msg = L.T("Explorer is not responding — restart recommended"); color = Theme.AccDisk; }
+            else { msg = L.T("Explorer is running normally"); color = Theme.AccRam; }
+            FixLog("  " + msg);
+            SetFixResult(id, color, msg);
         }
 
         private void RunFix(int id, string title, string desc)
@@ -3020,14 +3693,15 @@ namespace WinTotal
             FixLog("═══ " + title + " ═══");
             Task.Run(delegate
             {
+                bool failed = false;
                 try
                 {
                     switch (id)
                     {
                         case 0: // network
-                            RunCmdStep("ipconfig", "/flushdns", false);
-                            RunCmdStep("netsh", "winsock reset", false);
-                            RunCmdStep("netsh", "int ip reset", false);
+                            if (LogStepResult(RunCmdStep("ipconfig", "/flushdns", false))) failed = true;
+                            if (LogStepResult(RunCmdStep("netsh", "winsock reset", false))) failed = true;
+                            if (LogStepResult(RunCmdStep("netsh", "int ip reset", false))) failed = true;
                             FixLog(L.T("A reboot is recommended."));
                             break;
                         case 1: // disk space
@@ -3037,14 +3711,16 @@ namespace WinTotal
                                 Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp"));
                             try
                             {
-                                SHEmptyRecycleBin(IntPtr.Zero, null, 0x7); // no confirm/progress/sound
-                                FixLog("  " + L.T("Recycle Bin emptied"));
+                                int hr = SHEmptyRecycleBin(IntPtr.Zero, null, 0x7); // no confirm/progress/sound
+                                FixLog("  " + (hr == 0
+                                    ? L.T("Recycle Bin emptied")
+                                    : L.T("Recycle Bin already empty (or could not be emptied)")));
                             }
                             catch { }
                             FixLog(string.Format(L.T("Freed {0:F0} MB"), freed / 1048576.0));
                             break;
-                        case 2: // sfc
-                            RunCmdStep("sfc", "/scannow", true);
+                        case 2: // sfc — its exit code semantics are murky; only treat run/timeout errors as failure
+                            if (RunCmdStep("sfc", "/scannow", true) < 0) failed = true;
                             break;
                         case 3: // explorer
                             RunCmdStep("taskkill", "/f /im explorer.exe", false);
@@ -3054,14 +3730,25 @@ namespace WinTotal
                             FixLog("  " + L.T("Explorer restarted"));
                             break;
                     }
-                    FixLog(L.T("Done."));
+                    FixLog(failed
+                        ? L.T("Finished, but some steps failed — see the log above.")
+                        : L.T("Done."));
+                    SetFixResult(id, failed ? Theme.AccDisk : Theme.TextLow,
+                        L.T("Repair finished — run Check again to verify"));
                 }
                 catch (Exception ex)
                 {
-                    FixLog("  ERROR: " + ex.Message);
+                    FixLog("  " + L.T("ERROR: ") + ex.Message);
                 }
-                _fixRunning = false;
+                finally { _fixRunning = false; }
             });
+        }
+
+        private bool LogStepResult(int exitCode)
+        {
+            if (exitCode == 0) return false;
+            FixLog("  " + string.Format(L.T("Step failed (exit code {0})"), exitCode));
+            return true;
         }
 
         // ================= Apps =================
@@ -3348,6 +4035,8 @@ namespace WinTotal
 
         private void LoadAppsAsync()
         {
+            if (_appsLoading) return; // no duplicate scans (each spawns a PowerShell)
+            _appsLoading = true;
             _appCountText.Text = L.T("Loading app list...");
             _appListPanel.Children.Clear();
             Task.Run(delegate
@@ -3356,7 +4045,7 @@ namespace WinTotal
                 ScanUninstallKeys(RegistryHive.LocalMachine, RegistryView.Registry64, list);
                 ScanUninstallKeys(RegistryHive.LocalMachine, RegistryView.Registry32, list);
                 ScanUninstallKeys(RegistryHive.CurrentUser, RegistryView.Registry64, list);
-                LoadStoreApps(list);
+                bool storeOk = LoadStoreApps(list);
 
                 var seen = new HashSet<string>();
                 var final = new List<AppEntry>();
@@ -3370,13 +4059,16 @@ namespace WinTotal
                     }
                 }
                 MarkRunning(final);
-                return final;
+                return Tuple.Create(final, storeOk);
             }).ContinueWith(t =>
             {
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    _apps = t.IsFaulted ? new List<AppEntry>() : t.Result;
+                    _appsLoading = false;
+                    _apps = t.IsFaulted ? new List<AppEntry>() : t.Result.Item1;
                     BuildAppRows();
+                    if (!t.IsFaulted && !t.Result.Item2)
+                        SetStatus(L.T("Store app list unavailable — showing desktop apps only."));
                 }));
             });
         }
@@ -3425,7 +4117,9 @@ namespace WinTotal
             catch { }
         }
 
-        private void LoadStoreApps(List<AppEntry> list)
+        // async output collection: a hung PowerShell is killed after 30s instead of
+        // blocking ReadToEnd forever and leaving the app list stuck on "Loading..."
+        private bool LoadStoreApps(List<AppEntry> list)
         {
             try
             {
@@ -3435,14 +4129,30 @@ namespace WinTotal
                     Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"Get-AppxPackage | Where-Object { -not $_.IsFramework -and $_.SignatureKind -ne 'System' } | ForEach-Object { $_.Name + '|' + $_.PackageFullName + '|' + $_.Publisher + '|' + $_.Version }\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     CreateNoWindow = true,
                     StandardOutputEncoding = Encoding.UTF8
                 };
+                var lines = new List<string>();
                 using (var p = Process.Start(psi))
                 {
-                    string output = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit(30000);
-                    foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                    p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
+                    {
+                        if (!string.IsNullOrEmpty(e.Data)) lock (lines) lines.Add(e.Data);
+                    };
+                    p.ErrorDataReceived += delegate { }; // drain so stderr can never fill the pipe
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    if (!p.WaitForExit(30000))
+                    {
+                        try { p.Kill(); } catch { }
+                        return false;
+                    }
+                    p.WaitForExit(); // flush remaining async output events
+                }
+                lock (lines)
+                {
+                    foreach (var line in lines)
                     {
                         var parts = line.Split('|');
                         if (parts.Length < 4) continue;
@@ -3455,8 +4165,9 @@ namespace WinTotal
                         list.Add(a);
                     }
                 }
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         private static string SimplifyPublisher(string dn)
@@ -3482,14 +4193,31 @@ namespace WinTotal
             return n.Length >= 2 ? n : raw;
         }
 
+        // rows are materialized in small dispatcher batches so a machine with hundreds of
+        // installed apps never freezes the UI while the list is built
         private void BuildAppRows()
         {
             _appListPanel.Children.Clear();
-            foreach (var a in _apps)
-                _appListPanel.Children.Add(MakeAppRow(a));
+            int gen = ++_rowBuildGen;
             RefreshCount();
             RebuildChips();
-            ApplyFilter();
+            AddAppRowBatch(0, gen);
+        }
+
+        private void AddAppRowBatch(int start, int gen)
+        {
+            if (gen != _rowBuildGen) return; // a newer rebuild superseded this one
+            string q = (_searchBox.Text ?? "").Trim().ToLowerInvariant();
+            int end = Math.Min(_apps.Count, start + 60);
+            for (int i = start; i < end; i++)
+            {
+                var row = MakeAppRow(_apps[i]);
+                row.Visibility = RowMatchesFilter(_apps[i], q) ? Visibility.Visible : Visibility.Collapsed;
+                _appListPanel.Children.Add(row);
+            }
+            if (end < _apps.Count)
+                Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                    new Action(delegate { AddAppRowBatch(end, gen); }));
         }
 
         private static readonly string[] RowColors = new string[]
@@ -3562,7 +4290,7 @@ namespace WinTotal
                     Margin = new Thickness(8, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                badge.Child = new TextBlock { Text = "Store", FontSize = 10, Foreground = Ui.Br("#5EAAFF") };
+                badge.Child = new TextBlock { Text = L.T("Store"), FontSize = 10, Foreground = Ui.Br("#5EAAFF") };
                 nameRow.Children.Add(badge);
             }
             if (a.RunningPids != null && a.RunningPids.Count > 0)
@@ -3642,6 +4370,15 @@ namespace WinTotal
             return row;
         }
 
+        private bool RowMatchesFilter(AppEntry a, string q)
+        {
+            bool catOk = _activeCategory == "All" || (a.Category ?? "Other") == _activeCategory;
+            return catOk && (q.Length == 0
+                || a.Name.ToLowerInvariant().Contains(q)
+                || (a.Publisher ?? "").ToLowerInvariant().Contains(q)
+                || (a.PackageFullName ?? "").ToLowerInvariant().Contains(q));
+        }
+
         private void ApplyFilter()
         {
             string q = (_searchBox.Text ?? "").Trim().ToLowerInvariant();
@@ -3650,12 +4387,7 @@ namespace WinTotal
                 var row = el as Border;
                 if (row == null) continue;
                 var a = row.Tag as AppEntry;
-                bool catOk = _activeCategory == "All" || (a.Category ?? "Other") == _activeCategory;
-                bool show = catOk && (q.Length == 0
-                    || a.Name.ToLowerInvariant().Contains(q)
-                    || (a.Publisher ?? "").ToLowerInvariant().Contains(q)
-                    || (a.PackageFullName ?? "").ToLowerInvariant().Contains(q));
-                row.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                row.Visibility = RowMatchesFilter(a, q) ? Visibility.Visible : Visibility.Collapsed;
             }
         }
 
@@ -3737,15 +4469,46 @@ namespace WinTotal
                 foreach (var p in procs) { try { if (!p.HasExited) still.Add(p); } catch { } }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (still.Count > 0)
+                    if (still.Count == 0)
                     {
-                        if (MessageBox.Show(this,
-                            string.Format(L.T("{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost."), still.Count, a.Name),
-                            L.T("Force Kill"), MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
-                            foreach (var p in still) { try { p.Kill(); } catch { } }
+                        a.RunningPids = null;
+                        SetStatus(string.Format(L.T("Processes of \"{0}\" closed."), a.Name));
+                        return;
                     }
-                    a.RunningPids = null;
-                    SetStatus(string.Format(L.T("Processes of \"{0}\" closed."), a.Name));
+                    if (MessageBox.Show(this,
+                        string.Format(L.T("{0} process(es) of \"{1}\" are still running.\nForce kill? Unsaved data may be lost."), still.Count, a.Name),
+                        L.T("Force Kill"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    {
+                        // declined: the processes are still alive — keep the pids so the badge stays truthful
+                        var keep = new List<int>();
+                        foreach (var p in still) { try { if (!p.HasExited) keep.Add(p.Id); } catch { } }
+                        a.RunningPids = keep.Count > 0 ? keep : null;
+                        SetStatus(L.T("Cancelled"));
+                        return;
+                    }
+                    Task.Run(delegate
+                    {
+                        foreach (var p in still) { try { p.Kill(); } catch { } }
+                        var left = new List<int>();
+                        foreach (var p in still)
+                        {
+                            try { if (!p.WaitForExit(2000)) left.Add(p.Id); }
+                            catch { }
+                        }
+                        Dispatcher.BeginInvoke(new Action(delegate
+                        {
+                            if (left.Count > 0)
+                            {
+                                a.RunningPids = left;
+                                SetStatus(string.Format(L.T("{0} process(es) did not close."), left.Count));
+                            }
+                            else
+                            {
+                                a.RunningPids = null;
+                                SetStatus(string.Format(L.T("Processes of \"{0}\" closed."), a.Name));
+                            }
+                        }));
+                    });
                 }));
             });
         }
@@ -3762,22 +4525,52 @@ namespace WinTotal
                 var pkg = a.PackageFullName;
                 Task.Run(delegate
                 {
+                    // success is verified (exit code + stderr); a hung PowerShell is killed
                     var psi = new ProcessStartInfo
                     {
                         FileName = "powershell.exe",
                         Arguments = string.Format("-NoProfile -Command \"Remove-AppxPackage -Package '{0}'\"", pkg),
                         UseShellExecute = false,
-                        CreateNoWindow = true
+                        CreateNoWindow = true,
+                        RedirectStandardError = true
                     };
-                    using (var p = Process.Start(psi)) p.WaitForExit(120000);
+                    var errLines = new List<string>();
+                    using (var p = Process.Start(psi))
+                    {
+                        p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
+                        {
+                            if (!string.IsNullOrEmpty(e.Data)) lock (errLines) errLines.Add(e.Data);
+                        };
+                        p.BeginErrorReadLine();
+                        if (!p.WaitForExit(120000))
+                        {
+                            try { p.Kill(); } catch { }
+                            return false;
+                        }
+                        p.WaitForExit();
+                        int errCount;
+                        lock (errLines) errCount = errLines.Count;
+                        return p.ExitCode == 0 && errCount == 0;
+                    }
                 }).ContinueWith(t =>
                 {
                     Dispatcher.BeginInvoke(new Action(delegate
                     {
-                        _appListPanel.Children.Remove(row);
-                        _apps.Remove(a);
-                        RefreshCount();
-                        SetStatus(string.Format(L.T("\"{0}\" uninstalled"), a.Name));
+                        bool ok = !t.IsFaulted && t.Result;
+                        if (ok)
+                        {
+                            _appListPanel.Children.Remove(row);
+                            _apps.Remove(a);
+                            RefreshCount();
+                            SetStatus(string.Format(L.T("\"{0}\" uninstalled"), a.Name));
+                        }
+                        else
+                        {
+                            string msg = string.Format(
+                                L.T("Could not uninstall \"{0}\". The app may be running or need administrator rights."), a.Name);
+                            SetStatus(msg);
+                            MessageBox.Show(this, msg, L.T("Uninstall App"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
                     }));
                 });
                 return;
@@ -3817,11 +4610,12 @@ namespace WinTotal
                 }
 
                 bool keyGone = !UninstallKeyExists(a);
+                // registry sweep stays on this background thread — it can take seconds
+                var removed = keyGone ? CleanRegistryLeftovers(a) : null;
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     if (keyGone)
                     {
-                        var removed = CleanRegistryLeftovers(a);
                         _appListPanel.Children.Remove(row);
                         _apps.Remove(a);
                         RefreshCount();
@@ -3924,24 +4718,33 @@ namespace WinTotal
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             }
 
-            var removed = CleanRegistryLeftovers(a);
-            int folders = 0;
-
-            if (!string.IsNullOrEmpty(loc) && Directory.Exists(loc) && IsSafeToDeleteDir(loc))
+            // deleting a large install folder + sweeping the registry can take minutes —
+            // run off the UI thread so the window never goes "not responding"
+            SetStatus(L.T("Deleting leftovers..."));
+            Task.Run(delegate
             {
-                try { Directory.Delete(loc, true); folders = 1; }
-                catch { }
-            }
+                var removed = CleanRegistryLeftovers(a);
+                int folders = 0;
 
-            _appListPanel.Children.Remove(row);
-            _apps.Remove(a);
-            RefreshCount();
-            string summary = string.Format(L.T("\"{0}\" force-deleted · {1} registry keys, {2} folders removed"),
-                a.Name, removed.Count, folders);
-            SetStatus(summary);
-            if (confirm)
-                MessageBox.Show(this, summary + (removed.Count > 0 ? "\n\n" + string.Join("\n", removed.Take(15)) : ""),
-                    L.T("Done"), MessageBoxButton.OK, MessageBoxImage.Information);
+                if (!string.IsNullOrEmpty(loc) && Directory.Exists(loc) && IsSafeToDeleteDir(loc))
+                {
+                    try { Directory.Delete(loc, true); folders = 1; }
+                    catch { }
+                }
+
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    _appListPanel.Children.Remove(row);
+                    _apps.Remove(a);
+                    RefreshCount();
+                    string summary = string.Format(L.T("\"{0}\" force-deleted · {1} registry keys, {2} folders removed"),
+                        a.Name, removed.Count, folders);
+                    SetStatus(summary);
+                    if (confirm)
+                        MessageBox.Show(this, summary + (removed.Count > 0 ? "\n\n" + string.Join("\n", removed.Take(15)) : ""),
+                            L.T("Done"), MessageBoxButton.OK, MessageBoxImage.Information);
+                }));
+            });
         }
 
         private static bool IsSafeToDeleteDir(string path)
