@@ -934,7 +934,9 @@ namespace WinTotal
             _startPage = startPage;
             _startQuery = startQuery;
             Title = "WinTotal";
-            Width = 1120; Height = 700;
+            // 810: the metric-card charts need ~56px each after the health strip and the
+            // System rows of the top-process panel (added in v1.5) grew; clamp for short screens
+            Width = 1120; Height = Math.Min(810, SystemParameters.WorkArea.Height - 24);
             MinWidth = 900; MinHeight = 580;
             Background = Ui.Br(Theme.Bg);
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic");
